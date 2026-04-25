@@ -33,9 +33,9 @@ def _axis_style(fig):
         automargin=True,
     )
     fig.update_layout(
-        template="plotly_white",
-        paper_bgcolor="white",
-        plot_bgcolor="white",
+        #template="plotly_white",
+        #paper_bgcolor="white",
+        #plot_bgcolor="white",
         font=dict(size=13),
         title=dict(
             x=0.0,
@@ -84,7 +84,7 @@ def _add_peak_annotations(
     marker_color="#8b5cf6",
     marker_size=6,
     legendgroup=None,
-    trace_name="Peaks",
+    trace_name="Peak",
     showlegend=False,
 ):
     peak_x = np.asarray(peaks.get("x", np.array([])), dtype=float)
@@ -114,7 +114,6 @@ def _add_peak_annotations(
             name=trace_name,
             showlegend=showlegend,
             legendgroup=legendgroup,
-            hoverinfo="skip",
         ),
         row=row,
         col=col,
@@ -173,7 +172,7 @@ def create_single_view_figure(
             x=x,
             y=smoothed,
             mode="lines",
-            name="Smoothed",
+            name="Baseline corrected & Smoothed",
             line=dict(color="#10b981", width=2.5),
             legendgroup="smoothed",
         )
@@ -185,7 +184,7 @@ def create_single_view_figure(
             marker_color="#10b981",
             marker_size=8,
             legendgroup="smoothed",
-            trace_name="Peaks",
+            trace_name="Peak",
             showlegend=False,
         )
 
@@ -195,6 +194,7 @@ def create_single_view_figure(
         xaxis_title=x_label,
         yaxis_title=y_label,
     )
+    
     _expand_xaxis(fig, x)
     return _axis_style(fig)
 
@@ -230,7 +230,6 @@ def create_overlay_figure(
                 name=name,
                 legendgroup=name,
                 line=dict(width=2, color=color),
-                hovertemplate=f"{name}<br>x: %{{x:.1f}} cm⁻¹<br>y: %{{y:.2f}}<extra></extra>",
             )
         )
 
@@ -241,7 +240,7 @@ def create_overlay_figure(
                 marker_color=color,
                 marker_size=6,
                 legendgroup=name,
-                trace_name="Peaks",
+                trace_name="Peak",
                 showlegend=False,
             )
 
@@ -251,7 +250,7 @@ def create_overlay_figure(
         xaxis_title=x_label,
         yaxis_title=y_label,
     )
-    
+
     _expand_xaxis(fig, all_x)
     return _axis_style(fig)
 
@@ -293,7 +292,6 @@ def create_normalized_overlay_figure(
                 name=name,
                 legendgroup=name,
                 line=dict(width=2, color=color),
-                hovertemplate=f"{name}<br>x: %{{x:.1f}} cm⁻¹<br>norm: %{{y:.3f}}<extra></extra>",
             )
         )
 
@@ -312,7 +310,7 @@ def create_normalized_overlay_figure(
                 marker_color=color,
                 marker_size=6,
                 legendgroup=name,
-                trace_name="Peaks",
+                trace_name="Peak",
                 showlegend=False,
             )
 
@@ -366,7 +364,6 @@ def create_stacked_figure(
                 name=name,
                 legendgroup=name,
                 line=dict(width=2, color=color),
-                hovertemplate=f"{name}<br>x: %{{x:.1f}} cm⁻¹<br>stacked: %{{y:.3f}}<extra></extra>",
             )
         )
 
@@ -386,7 +383,7 @@ def create_stacked_figure(
                 marker_color=color,
                 marker_size=6,
                 legendgroup=name,
-                trace_name="Peaks",
+                trace_name="Peak",
                 showlegend=False,
             )
 

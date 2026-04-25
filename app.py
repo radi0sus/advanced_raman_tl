@@ -27,7 +27,6 @@ st.set_page_config(
     layout="wide",
 )
 
-
 def init_session_state():
     if "spectra" not in st.session_state:
         st.session_state.spectra = {}
@@ -35,12 +34,8 @@ def init_session_state():
     if "uploaded_file_keys" not in st.session_state:
         st.session_state.uploaded_file_keys = set()
 
-    if "xmin" not in st.session_state:
-        st.session_state.xmin = 200
-
-    if "xmax" not in st.session_state:
-        st.session_state.xmax = 3200
-
+    if "file_key_to_name" not in st.session_state:
+        st.session_state.file_key_to_name = {}
 
 def make_file_key(uploaded_file) -> str:
     data = uploaded_file.getvalue()
@@ -73,23 +68,32 @@ def parse_uploaded_file(uploaded_file) -> dict:
         except Exception:
             pass
 
-
 def sync_uploaded_files(uploaded_files):
-    if not uploaded_files:
-        return
+    current_files = uploaded_files or []
+    current_map = {make_file_key(f): f for f in current_files}
+    current_keys = set(current_map.keys())
 
-    for uploaded_file in uploaded_files:
-        file_key = make_file_key(uploaded_file)
+    # Dateien entfernen, die nicht mehr im Uploader sind
+    removed_keys = st.session_state.uploaded_file_keys - current_keys
+    for file_key in removed_keys:
+        filename = st.session_state.file_key_to_name.pop(file_key, None)
+        if filename is not None:
+            st.session_state.spectra.pop(filename, None)
 
+    # Neue Dateien hinzufügen
+    for file_key, uploaded_file in current_map.items():
         if file_key in st.session_state.uploaded_file_keys:
             continue
 
         try:
             sp = parse_uploaded_file(uploaded_file)
             st.session_state.spectra[sp["filename"]] = sp
-            st.session_state.uploaded_file_keys.add(file_key)
+            st.session_state.file_key_to_name[file_key] = sp["filename"]
         except Exception as exc:
             st.sidebar.error(f"Failed to parse {uploaded_file.name}: {exc}")
+
+    # Synchronisierten Stand speichern
+    st.session_state.uploaded_file_keys = current_keys
 
 
 def build_processing_kwargs():
@@ -271,12 +275,13 @@ def show_metadata(spectrum: dict):
     metadata = spectrum.get("metadata", {})
     x = spectrum.get("x", [])
 
-    st.markdown("### Spectrum Info")
-    st.write(f"**Filename:** {spectrum.get('filename', '')}")
-    st.write(f"**Points:** {len(x)}")
+    lines = [
+        f"**Filename:** {spectrum.get('filename', '')}",
+        f"**Points:** {len(x)}",
+    ]
 
     if x:
-        st.write(f"**Range:** {x[0]:.1f} – {x[-1]:.1f} cm⁻¹")
+        lines.append(f"**Range:** {x[0]:.1f} – {x[-1]:.1f} cm⁻¹")
 
     for key in [
         "Laser Wavelength (nm)",
@@ -290,7 +295,9 @@ def show_metadata(spectrum: dict):
         "Acquired",
     ]:
         if metadata.get(key) not in (None, ""):
-            st.write(f"**{key}:** {metadata[key]}")
+            lines.append(f"**{key}:** {metadata[key]}")
+
+    st.markdown("<br>".join(lines), unsafe_allow_html=True)
 
 
 init_session_state()
@@ -329,21 +336,15 @@ with st.sidebar.expander("Display options", expanded=False):
     show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
     show_multi_peaks = st.checkbox("Show peaks (overlay & stacked)", value=True, key="multi_show_peaks")
 
-with st.sidebar.expander("Session", expanded=False):
-    if st.button("Clear loaded spectra"):
-        st.session_state.spectra = {}
-        st.session_state.uploaded_file_keys = set()
-        st.session_state.xmin = 100
-        st.session_state.xmax = 3200
-        st.rerun()
-
 processing_kwargs = build_processing_kwargs()
 
 if processing_kwargs["xmin"] >= processing_kwargs["xmax"]:
     st.error("Invalid range: X min must be smaller than X max.")
     st.stop()
     
-active_spectrum = spectra[selected_spectrum_name]
+active_spectrum = spectra.get(selected_spectrum_name)
+if active_spectrum is None:
+    st.stop()
 
 tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra"])
 
