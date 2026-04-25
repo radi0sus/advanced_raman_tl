@@ -190,7 +190,7 @@ def create_single_view_figure(
 
     fig.update_layout(
         title=title,
-        height=520,
+        height=800,
         xaxis_title=x_label,
         yaxis_title=y_label,
     )
@@ -246,7 +246,7 @@ def create_overlay_figure(
 
     fig.update_layout(
         title=title,
-        height=520,
+        height=800,
         xaxis_title=x_label,
         yaxis_title=y_label,
     )
@@ -316,7 +316,7 @@ def create_normalized_overlay_figure(
 
     fig.update_layout(
         title=title,
-        height=520,
+        height=800,
         xaxis_title=x_label,
         yaxis_title=y_label,
     )
@@ -389,7 +389,7 @@ def create_stacked_figure(
 
     fig.update_layout(
         title=title,
-        height=620,
+        height=800,
         xaxis_title=x_label,
         yaxis_title=y_label,
     )
