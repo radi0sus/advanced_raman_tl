@@ -429,11 +429,20 @@ with tabs[3]:
         if not selected_spectra:
             st.warning("Please select at least one spectrum for stacked view.")
         else:
+            stack_step = st.slider(
+                "Stack spacing",
+                min_value=0.0,
+                max_value=2.0,
+                value=1.2,
+                step=0.001,
+            )
+
             fig = create_stacked_figure(
                 selected_spectra,
                 processing_kwargs=processing_kwargs,
                 title="Stacked Spectra",
                 show_peaks=show_multi_peaks,
+                step=stack_step,
             )
             st.plotly_chart(fig, width="stretch")
     except Exception as exc:

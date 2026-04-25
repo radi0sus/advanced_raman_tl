@@ -331,7 +331,7 @@ def create_stacked_figure(
     title="Stacked Spectra",
     x_label="Raman shift / cm⁻¹",
     y_label="Stacked normalized intensity",
-    step=1.2,
+    step=0.2,
     show_peaks=False,
 ):
 
