@@ -98,160 +98,163 @@ def sync_uploaded_files(uploaded_files):
 
 def build_processing_kwargs():
 
-    with st.sidebar.expander("Processing settings", expanded=True):
-        st.markdown("#### Baseline")
-
-        baseline_method = st.radio(
-            "Method",
-            ["arpls", "snip"],
-            format_func=lambda x: "arPLS" if x == "arpls" else "SNIP",
-        )
-
-        if baseline_method == "arpls":
-            baseline_value = st.slider(
-                "arPLS lambda",
-                min_value=100,
-                max_value=10000,
-                value=1000,
-                step=100,
+    with st.sidebar.expander("Processing settings", expanded=False):
+        with st.container(border=True):
+            st.markdown("#### Baseline")
+    
+            baseline_method = st.radio(
+                "Method",
+                ["arpls", "snip"],
+                format_func=lambda x: "arPLS" if x == "arpls" else "SNIP",
             )
-            baseline_params = {
-                "lam": float(baseline_value),
-                "ratio": 1e-6,
-                "max_iter": 200,
-            }
-        else:
-            baseline_value = st.slider(
-                "SNIP iterations",
-                min_value=10,
-                max_value=200,
-                value=60,
+    
+            if baseline_method == "arpls":
+                baseline_value = st.slider(
+                    "arPLS lambda",
+                    min_value=100,
+                    max_value=10000,
+                    value=1000,
+                    step=100,
+                )
+                baseline_params = {
+                    "lam": float(baseline_value),
+                    "ratio": 1e-6,
+                    "max_iter": 200,
+                }
+            else:
+                baseline_value = st.slider(
+                    "SNIP iterations",
+                    min_value=10,
+                    max_value=200,
+                    value=60,
+                    step=1,
+                )
+                baseline_params = {
+                    "iterations": int(baseline_value),
+                }
+
+        #st.divider()
+        with st.container(border=True):
+            st.markdown("#### Smoothing")
+            smoothing_method = st.radio(
+                "Method",
+                ["whittaker", "savgol"],
+                format_func=lambda x: "Whittaker" if x == "whittaker" else "Savitzky-Golay",
+            )
+    
+            if smoothing_method == "whittaker":
+                smoothing_lambda = st.slider(
+                    "Whittaker lambda",
+                    min_value=0.1,
+                    max_value=50.0,
+                    value=1.0,
+                    step=0.1,
+                )
+                smoothing_params = {"lam": float(smoothing_lambda), "d": 2}
+            else:
+                savgol_window = st.slider(
+                    "Savitzky-Golay window",
+                    min_value=3,
+                    max_value=51,
+                    value=5,
+                    step=2,
+                )
+                savgol_polyorder = st.slider(
+                    "Savitzky-Golay polyorder",
+                    min_value=1,
+                    max_value=7,
+                    value=3,
+                    step=1,
+                )
+                smoothing_params = {
+                    "window_length": int(savgol_window),
+                    "polyorder": int(savgol_polyorder),
+                }
+
+        #st.divider()
+        
+        with st.container(border=True):
+            st.markdown("#### Peaks")
+            prominence_mode = st.radio(
+                "Prominence mode",
+                ["auto", "manual"],
+                horizontal=True,
+            )
+    
+            if prominence_mode == "manual":
+                peak_prominence = st.slider(
+                    "Prominence",
+                    min_value=0.0,
+                    max_value=200.0,
+                    value=10.0,
+                    step=1.0,
+                )
+            else:
+                peak_prominence = None
+    
+            peak_prominence_factor = st.slider(
+                "Auto prominence factor",
+                min_value=0.001,
+                max_value=0.2,
+                value=0.05,
+                step=0.001,
+            )
+    
+            peak_width = st.slider(
+                "Min width (cm⁻¹)",
+                min_value=0.0,
+                max_value=50.0,
+                value=2.0,
+                step=0.5,
+            )
+    
+            peak_distance = st.slider(
+                "Min distance (cm⁻¹)",
+                min_value=0.0,
+                max_value=100.0,
+                value=8.0,
+                step=1.0,
+            )
+
+        #st.divider()
+        with st.container(border=True):
+            st.markdown("#### Transformation")
+            spectrum_shift = st.slider(
+                "Spectrum shift (cm⁻¹)",
+                min_value=-50,
+                max_value=50,
+                value=0,
                 step=1,
             )
-            baseline_params = {
-                "iterations": int(baseline_value),
-            }
-
-        st.divider()
-
-        st.markdown("#### Smoothing")
-        smoothing_method = st.radio(
-            "Method",
-            ["whittaker", "savgol"],
-            format_func=lambda x: "Whittaker" if x == "whittaker" else "Savitzky-Golay",
-        )
-
-        if smoothing_method == "whittaker":
-            smoothing_lambda = st.slider(
-                "Whittaker lambda",
+    
+            intensity_scale = st.slider(
+                "Intensity scale",
                 min_value=0.1,
-                max_value=50.0,
+                max_value=10.0,
                 value=1.0,
                 step=0.1,
             )
-            smoothing_params = {"lam": float(smoothing_lambda), "d": 2}
-        else:
-            savgol_window = st.slider(
-                "Savitzky-Golay window",
-                min_value=3,
-                max_value=51,
-                value=5,
-                step=2,
-            )
-            savgol_polyorder = st.slider(
-                "Savitzky-Golay polyorder",
-                min_value=1,
-                max_value=7,
-                value=3,
+
+        #st.divider()
+        
+        with st.container(border=True):
+            st.markdown("#### Range")
+    
+            xmin = st.slider(
+                "X min",
+                min_value=0,
+                max_value=4000,
+                value=100,
                 step=1,
             )
-            smoothing_params = {
-                "window_length": int(savgol_window),
-                "polyorder": int(savgol_polyorder),
-            }
-
-        st.divider()
-
-        st.markdown("#### Peaks")
-        prominence_mode = st.radio(
-            "Prominence mode",
-            ["auto", "manual"],
-            horizontal=True,
-        )
-
-        if prominence_mode == "manual":
-            peak_prominence = st.slider(
-                "Prominence",
-                min_value=0.0,
-                max_value=200.0,
-                value=10.0,
-                step=1.0,
+            
+            xmax = st.slider(
+                "X max",
+                min_value=0,
+                max_value=4000,
+                value=3200,
+                step=1,
             )
-        else:
-            peak_prominence = None
-
-        peak_prominence_factor = st.slider(
-            "Auto prominence factor",
-            min_value=0.001,
-            max_value=0.2,
-            value=0.05,
-            step=0.001,
-        )
-
-        peak_width = st.slider(
-            "Min width (cm⁻¹)",
-            min_value=0.0,
-            max_value=50.0,
-            value=2.0,
-            step=0.5,
-        )
-
-        peak_distance = st.slider(
-            "Min distance (cm⁻¹)",
-            min_value=0.0,
-            max_value=100.0,
-            value=8.0,
-            step=1.0,
-        )
-
-        st.divider()
-
-        st.markdown("#### Transformation")
-        spectrum_shift = st.slider(
-            "Spectrum shift (cm⁻¹)",
-            min_value=-50,
-            max_value=50,
-            value=0,
-            step=1,
-        )
-
-        intensity_scale = st.slider(
-            "Intensity scale",
-            min_value=0.1,
-            max_value=10.0,
-            value=1.0,
-            step=0.1,
-        )
-
-        st.divider()
-
-        st.markdown("#### Range")
-
-        xmin = st.slider(
-            "X min",
-            min_value=0,
-            max_value=4000,
-            value=100,
-            step=1,
-        )
-        
-        xmax = st.slider(
-            "X max",
-            min_value=0,
-            max_value=4000,
-            value=3200,
-            step=1,
-        )
 
     return {
         "xmin": float(xmin),
@@ -276,29 +279,34 @@ def show_metadata(spectrum: dict):
     x = spectrum.get("x", [])
 
     lines = [
-        f"**Filename:** {spectrum.get('filename', '')}",
-        f"**Points:** {len(x)}",
+        f"<b>File:</b> {spectrum.get('filename', '')}",
+        f"<b>Points:</b> {len(x)}",
     ]
 
     if x:
-        lines.append(f"**Range:** {x[0]:.1f} – {x[-1]:.1f} cm⁻¹")
+        lines.append(f"<b>Range:</b> {x[0]:.1f} – {x[-1]:.1f} cm⁻¹")
 
-    for key in [
-        "Laser Wavelength (nm)",
-        "Acq. time (s)",
-        "Accumulations",
-        "Grating",
-        "Filter",
-        "Instrument Name",
-        "Detector Name",
-        "Spectrum Name",
-        "Acquired",
-    ]:
-        if metadata.get(key) not in (None, ""):
-            lines.append(f"**{key}:** {metadata[key]}")
+    key_map = {
+        "Laser Wavelength (nm)": "Laser",
+        "Acq. time (s)": "Acq. time",
+        "Accumulations": "Accum.",
+        "Grating": "Grating",
+        "Filter": "Filter",
+        "Instrument Name": "Instrument",
+        "Detector Name": "Detector",
+        "Spectrum Name": "Name",
+        "Acquired": "Acquired",
+    }
 
-    st.markdown("<br>".join(lines), unsafe_allow_html=True)
+    for key, label in key_map.items():
+        value = metadata.get(key)
+        if value not in (None, ""):
+            lines.append(f"<b>{label}:</b> {value}")
 
+    st.markdown(
+        f"<div style='font-size: 0.95rem; line-height: 1.3;'>{'<br>'.join(lines)}</div>",
+        unsafe_allow_html=True,
+    )
 
 init_session_state()
 
@@ -331,7 +339,8 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
         options=spectrum_names,
         default=spectrum_names,
     )
-
+    
+    
 with st.sidebar.expander("Display options", expanded=False):
     show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
     show_multi_peaks = st.checkbox("Show peaks (overlay & stacked)", value=True, key="multi_show_peaks")
@@ -345,6 +354,9 @@ if processing_kwargs["xmin"] >= processing_kwargs["xmax"]:
 active_spectrum = spectra.get(selected_spectrum_name)
 if active_spectrum is None:
     st.stop()
+    
+with st.sidebar.expander("Spectrum Info", expanded=False):
+    show_metadata(active_spectrum)
 
 tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra"])
 
@@ -427,6 +439,3 @@ with tabs[3]:
     except Exception as exc:
         st.error(f"Stacked figure error: {exc}")
 
-st.markdown("---")
-with st.expander("Spectrum Info", expanded=False):
-    show_metadata(active_spectrum)
