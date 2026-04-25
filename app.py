@@ -1,0 +1,431 @@
+from __future__ import annotations
+
+import hashlib
+import tempfile
+from pathlib import Path
+
+import streamlit as st
+
+from utils.labram_parser import load
+from utils.processing import process_spectrum
+from utils.figures import (
+    create_single_view_figure,
+    create_overlay_figure,
+    create_normalized_overlay_figure,
+    create_stacked_figure,
+)
+
+try:
+    from utils.figures import make_spectrum_title
+except ImportError:
+    def make_spectrum_title(spectrum_dict):
+        return spectrum_dict.get("filename") or "Spectrum"
+
+
+st.set_page_config(
+    page_title="Raman Analysis",
+    layout="wide",
+)
+
+
+def init_session_state():
+    if "spectra" not in st.session_state:
+        st.session_state.spectra = {}
+
+    if "uploaded_file_keys" not in st.session_state:
+        st.session_state.uploaded_file_keys = set()
+
+    if "xmin" not in st.session_state:
+        st.session_state.xmin = 200
+
+    if "xmax" not in st.session_state:
+        st.session_state.xmax = 3200
+
+
+def make_file_key(uploaded_file) -> str:
+    data = uploaded_file.getvalue()
+    digest = hashlib.sha256(data).hexdigest()
+    return f"{uploaded_file.name}:{digest}"
+
+
+def parse_uploaded_file(uploaded_file) -> dict:
+    suffix = Path(uploaded_file.name).suffix.lower()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(uploaded_file.getbuffer())
+        tmp_path = Path(tmp.name)
+
+    try:
+        sp = load(tmp_path)
+        return {
+            "filename": uploaded_file.name,
+            "name": uploaded_file.name,
+            "is_blc": sp.is_blc,
+            "x": list(sp.wavenumbers),
+            "y": list(sp.intensities),
+            "y_raw": list(sp.intensities_raw) if sp.intensities_raw is not None else None,
+            "metadata": dict(sp.metadata),
+            "history": list(sp.history),
+        }
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def sync_uploaded_files(uploaded_files):
+    if not uploaded_files:
+        return
+
+    for uploaded_file in uploaded_files:
+        file_key = make_file_key(uploaded_file)
+
+        if file_key in st.session_state.uploaded_file_keys:
+            continue
+
+        try:
+            sp = parse_uploaded_file(uploaded_file)
+            st.session_state.spectra[sp["filename"]] = sp
+            st.session_state.uploaded_file_keys.add(file_key)
+        except Exception as exc:
+            st.sidebar.error(f"Failed to parse {uploaded_file.name}: {exc}")
+
+
+def build_processing_kwargs():
+
+    with st.sidebar.expander("Processing settings", expanded=True):
+        st.markdown("#### Baseline")
+
+        baseline_method = st.radio(
+            "Method",
+            ["arpls", "snip"],
+            format_func=lambda x: "arPLS" if x == "arpls" else "SNIP",
+        )
+
+        if baseline_method == "arpls":
+            baseline_value = st.slider(
+                "arPLS lambda",
+                min_value=100,
+                max_value=10000,
+                value=1000,
+                step=100,
+            )
+            baseline_params = {
+                "lam": float(baseline_value),
+                "ratio": 1e-6,
+                "max_iter": 200,
+            }
+        else:
+            baseline_value = st.slider(
+                "SNIP iterations",
+                min_value=10,
+                max_value=200,
+                value=60,
+                step=1,
+            )
+            baseline_params = {
+                "iterations": int(baseline_value),
+            }
+
+        st.divider()
+
+        st.markdown("#### Smoothing")
+        smoothing_method = st.radio(
+            "Method",
+            ["whittaker", "savgol"],
+            format_func=lambda x: "Whittaker" if x == "whittaker" else "Savitzky-Golay",
+        )
+
+        if smoothing_method == "whittaker":
+            smoothing_lambda = st.slider(
+                "Whittaker lambda",
+                min_value=0.1,
+                max_value=50.0,
+                value=1.0,
+                step=0.1,
+            )
+            smoothing_params = {"lam": float(smoothing_lambda), "d": 2}
+        else:
+            savgol_window = st.slider(
+                "Savitzky-Golay window",
+                min_value=3,
+                max_value=51,
+                value=5,
+                step=2,
+            )
+            savgol_polyorder = st.slider(
+                "Savitzky-Golay polyorder",
+                min_value=1,
+                max_value=7,
+                value=3,
+                step=1,
+            )
+            smoothing_params = {
+                "window_length": int(savgol_window),
+                "polyorder": int(savgol_polyorder),
+            }
+
+        st.divider()
+
+        st.markdown("#### Peaks")
+        prominence_mode = st.radio(
+            "Prominence mode",
+            ["auto", "manual"],
+            horizontal=True,
+        )
+
+        if prominence_mode == "manual":
+            peak_prominence = st.slider(
+                "Prominence",
+                min_value=0.0,
+                max_value=200.0,
+                value=10.0,
+                step=1.0,
+            )
+        else:
+            peak_prominence = None
+
+        peak_prominence_factor = st.slider(
+            "Auto prominence factor",
+            min_value=0.001,
+            max_value=0.2,
+            value=0.05,
+            step=0.001,
+        )
+
+        peak_width = st.slider(
+            "Min width (cm⁻¹)",
+            min_value=0.0,
+            max_value=50.0,
+            value=2.0,
+            step=0.5,
+        )
+
+        peak_distance = st.slider(
+            "Min distance (cm⁻¹)",
+            min_value=0.0,
+            max_value=100.0,
+            value=8.0,
+            step=1.0,
+        )
+
+        st.divider()
+
+        st.markdown("#### Transformation")
+        spectrum_shift = st.slider(
+            "Spectrum shift (cm⁻¹)",
+            min_value=-50,
+            max_value=50,
+            value=0,
+            step=1,
+        )
+
+        intensity_scale = st.slider(
+            "Intensity scale",
+            min_value=0.1,
+            max_value=10.0,
+            value=1.0,
+            step=0.1,
+        )
+
+        st.divider()
+
+        st.markdown("#### Range")
+
+        xmin = st.slider(
+            "X min",
+            min_value=0,
+            max_value=4000,
+            value=100,
+            step=1,
+        )
+        
+        xmax = st.slider(
+            "X max",
+            min_value=0,
+            max_value=4000,
+            value=3200,
+            step=1,
+        )
+
+    return {
+        "xmin": float(xmin),
+        "xmax": float(xmax),
+        "x_shift": float(spectrum_shift),
+        "intensity_scale": float(intensity_scale),
+        "baseline_method": baseline_method,
+        "baseline_params": baseline_params,
+        "smoothing_method": smoothing_method,
+        "smoothing_params": smoothing_params,
+        "peak_prominence": peak_prominence,
+        "peak_prominence_factor": float(peak_prominence_factor),
+        "peak_width": float(peak_width) if peak_width > 0 else None,
+        "peak_distance": float(peak_distance) if peak_distance > 0 else None,
+        "peak_height": None,
+        "peak_rel_height": 0.5,
+    }
+
+
+def show_metadata(spectrum: dict):
+    metadata = spectrum.get("metadata", {})
+    x = spectrum.get("x", [])
+
+    st.markdown("### Spectrum Info")
+    st.write(f"**Filename:** {spectrum.get('filename', '')}")
+    st.write(f"**Points:** {len(x)}")
+
+    if x:
+        st.write(f"**Range:** {x[0]:.1f} – {x[-1]:.1f} cm⁻¹")
+
+    for key in [
+        "Laser Wavelength (nm)",
+        "Acq. time (s)",
+        "Accumulations",
+        "Grating",
+        "Filter",
+        "Instrument Name",
+        "Detector Name",
+        "Spectrum Name",
+        "Acquired",
+    ]:
+        if metadata.get(key) not in (None, ""):
+            st.write(f"**{key}:** {metadata[key]}")
+
+
+init_session_state()
+
+st.title("Raman Analysis")
+
+uploaded_files = st.sidebar.file_uploader(
+    "Upload Raman spectra",
+    type=["txt", "xml", "l6s"],
+    accept_multiple_files=True,
+)
+
+sync_uploaded_files(uploaded_files)
+
+spectra = st.session_state.spectra
+
+if not spectra:
+    st.info("Upload one or more spectra to begin.")
+    st.stop()
+
+with st.sidebar.expander("Spectrum selection", expanded=True):
+    spectrum_names = list(spectra.keys())
+
+    selected_spectrum_name = st.selectbox(
+        "Active spectrum",
+        options=spectrum_names,
+    )
+
+    selected_overlay_names = st.multiselect(
+        "Overlay spectra",
+        options=spectrum_names,
+        default=spectrum_names,
+    )
+
+with st.sidebar.expander("Display options", expanded=False):
+    show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
+    show_multi_peaks = st.checkbox("Show peaks (overlay & stacked)", value=True, key="multi_show_peaks")
+
+with st.sidebar.expander("Session", expanded=False):
+    if st.button("Clear loaded spectra"):
+        st.session_state.spectra = {}
+        st.session_state.uploaded_file_keys = set()
+        st.session_state.xmin = 100
+        st.session_state.xmax = 3200
+        st.rerun()
+
+processing_kwargs = build_processing_kwargs()
+
+if processing_kwargs["xmin"] >= processing_kwargs["xmax"]:
+    st.error("Invalid range: X min must be smaller than X max.")
+    st.stop()
+    
+active_spectrum = spectra[selected_spectrum_name]
+
+tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra"])
+
+with tabs[0]:
+    try:
+        result = process_spectrum(
+            active_spectrum["x"],
+            active_spectrum["y"],
+            **processing_kwargs,
+        )
+        fig = create_single_view_figure(
+            result,
+            show_peaks=show_peaks,
+            title=make_spectrum_title(active_spectrum),
+        )
+        st.plotly_chart(fig, width="stretch")
+    except Exception as exc:
+        st.error(f"Processing error: {exc}")
+
+with tabs[1]:
+    try:
+        selected_spectra = {
+            name: spectra[name]
+            for name in selected_overlay_names
+            if name in spectra
+        }
+
+        if not selected_spectra:
+            st.warning("Please select at least one spectrum for overlay.")
+        else:
+            fig = create_overlay_figure(
+                selected_spectra,
+                processing_kwargs=processing_kwargs,
+                title="Overlay",
+                show_peaks=show_multi_peaks,
+            )
+            st.plotly_chart(fig, width="stretch")
+    except Exception as exc:
+        st.error(f"Overlay error: {exc}")
+
+with tabs[2]:
+    try:
+        selected_spectra = {
+            name: spectra[name]
+            for name in selected_overlay_names
+            if name in spectra
+        }
+
+        if not selected_spectra:
+            st.warning("Please select at least one spectrum for normalized overlay.")
+        else:
+            fig = create_normalized_overlay_figure(
+                selected_spectra,
+                processing_kwargs=processing_kwargs,
+                title="Normalized Overlay",
+                show_peaks=show_multi_peaks,
+            )
+            st.plotly_chart(fig, width="stretch")
+    except Exception as exc:
+        st.error(f"Normalized overlay error: {exc}")
+
+with tabs[3]:
+    try:
+        selected_spectra = {
+            name: spectra[name]
+            for name in selected_overlay_names
+            if name in spectra
+        }
+
+        if not selected_spectra:
+            st.warning("Please select at least one spectrum for stacked view.")
+        else:
+            fig = create_stacked_figure(
+                selected_spectra,
+                processing_kwargs=processing_kwargs,
+                title="Stacked Spectra",
+                show_peaks=show_multi_peaks,
+            )
+            st.plotly_chart(fig, width="stretch")
+    except Exception as exc:
+        st.error(f"Stacked figure error: {exc}")
+
+st.markdown("---")
+with st.expander("Spectrum Info", expanded=False):
+    show_metadata(active_spectrum)

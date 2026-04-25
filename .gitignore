@@ -1,0 +1,6 @@
+venv/
+backup/
+examples/
+__pycache__/
+*.py[cod]
+.DS_Store
