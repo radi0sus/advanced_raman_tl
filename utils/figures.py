@@ -1,5 +1,6 @@
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from utils.processing import process_spectrum
 
@@ -47,7 +48,7 @@ def _axis_style(fig):
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=-0.35,
+            y=-0.22,
             xanchor="left",
             x=0.0,
             bgcolor="rgba(0,0,0,0.03)",
@@ -127,7 +128,9 @@ def create_single_view_figure(
     show_peaks=True,
     title="Processed Spectrum",
     x_label="Raman shift / cm⁻¹",
-    y_label="Intensity",
+    y_label_top="Intensity",
+    y_label_middle="Intensity",
+    y_label_bottom="Intensity",
     show_raw=True,
     show_baseline=True,
     show_corrected=True,
@@ -140,8 +143,19 @@ def create_single_view_figure(
     smoothed = result["smoothed"]
     peaks = result["peaks"]
 
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.06,
+        subplot_titles=(
+            "Raw Spectrum & Baseline",
+            "Baseline corrected Spectrum",
+            "Baseline corrected & smoothed Spectrum",
+        ),
+    )
 
+    # oben: raw + baseline
     if show_raw:
         fig.add_trace(
             go.Scatter(
@@ -150,7 +164,10 @@ def create_single_view_figure(
                 mode="lines",
                 name="Raw data",
                 line=dict(color="#2563eb", width=2),
-            )
+                legendgroup="raw",
+            ),
+            row=1,
+            col=1,
         )
 
     if show_baseline:
@@ -161,9 +178,13 @@ def create_single_view_figure(
                 mode="lines",
                 name="Baseline",
                 line=dict(color="#ef4444", width=2, dash="dash"),
-            )
+                legendgroup="baseline",
+            ),
+            row=1,
+            col=1,
         )
 
+    # mitte: corrected
     if show_corrected:
         fig.add_trace(
             go.Scatter(
@@ -172,9 +193,13 @@ def create_single_view_figure(
                 mode="lines",
                 name="Baseline corrected",
                 line=dict(color="#0f172a", width=2),
-            )
+                legendgroup="corrected",
+            ),
+            row=2,
+            col=1,
         )
 
+    # unten: smoothed + peaks
     if show_smoothed:
         fig.add_trace(
             go.Scatter(
@@ -184,27 +209,56 @@ def create_single_view_figure(
                 name="Baseline corrected & Smoothed",
                 line=dict(color="#10b981", width=2.5),
                 legendgroup="smoothed",
-            )
+            ),
+            row=3,
+            col=1,
         )
 
     if show_peaks and show_smoothed:
-        _add_peak_annotations(
-            fig,
-            peaks,
-            marker_color="#10b981",
-            marker_size=8,
-            legendgroup="smoothed",
-            trace_name="Peak",
-            showlegend=False,
-        )
+        peak_x = np.asarray(peaks.get("x", np.array([])), dtype=float)
+
+        if len(peak_x) > 0:
+            peak_y = np.interp(
+                peak_x,
+                np.asarray(x, dtype=float),
+                np.asarray(smoothed, dtype=float),
+            )
+
+            peak_result = {
+                "x": peak_x,
+                "y": peak_y,
+            }
+
+            _add_peak_annotations(
+                fig,
+                peak_result,
+                row=3,
+                col=1,
+                marker_color="#10b981",
+                marker_size=8,
+                legendgroup="smoothed",
+                trace_name="Peak",
+                showlegend=False,
+            )
 
     fig.update_layout(
         title=title,
         height=800,
-        xaxis_title=x_label,
-        yaxis_title=y_label,
     )
 
+    fig.update_yaxes(title_text=y_label_top, row=1, col=1)
+    fig.update_yaxes(title_text=y_label_middle, row=2, col=1)
+    fig.update_yaxes(title_text=y_label_bottom, row=3, col=1)
+    fig.update_xaxes(title_text=x_label, row=3, col=1)
+    
+    y_bottom = np.asarray(smoothed if show_smoothed else corrected, dtype=float)
+    if y_bottom.size > 0:
+        ymin = float(np.min(y_bottom))
+        ymax = float(np.max(y_bottom))
+        yrange = ymax - ymin
+        pad = 0.15 * yrange if yrange > 0 else max(abs(ymax) * 0.1, 1.0)
+        fig.update_yaxes(range=[ymin, ymax + pad], row=3, col=1)
+    
     _expand_xaxis(fig, x)
     return _axis_style(fig)
 
