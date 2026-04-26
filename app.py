@@ -99,6 +99,10 @@ def sync_uploaded_files(uploaded_files):
 
     # Synchronisierten Stand speichern
     st.session_state.uploaded_file_keys = current_keys
+    
+    # reset wn slider
+    if not st.session_state.spectra:
+        st.session_state.pop("wn_range", None)
 
 
 def build_processing_kwargs():
@@ -368,6 +372,7 @@ with st.sidebar.expander("Display options", expanded=False):
                     max_value=4000,
                     value=(100, 3200),
                     step=1,
+                    key="wn_range",
                 )
 
 processing_kwargs = build_processing_kwargs()
