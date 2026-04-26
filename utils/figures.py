@@ -123,13 +123,14 @@ def _add_peak_annotations(
 
     return fig
 
+from plotly.subplots import make_subplots
+
 def create_single_view_figure(
     result,
     show_peaks=True,
     title="Processed Spectrum",
     x_label="Raman shift / cm⁻¹",
     y_label_top="Intensity",
-    y_label_middle="Intensity",
     y_label_bottom="Intensity",
     show_raw=True,
     show_baseline=True,
@@ -144,27 +145,25 @@ def create_single_view_figure(
     peaks = result["peaks"]
 
     fig = make_subplots(
-        rows=3,
+        rows=2,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.06,
+        vertical_spacing=0.08,
         subplot_titles=(
-            "Raw Spectrum & Baseline",
-            "Baseline corrected Spectrum",
-            "Baseline corrected & smoothed Spectrum",
+            "Raw Spectrum & Baseline corrected Spectrum with Baseline",
+            "Baseline Corrected and Smoothed Spectrum",
         ),
     )
 
-    # oben: raw + baseline
+    # oben
     if show_raw:
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=raw,
                 mode="lines",
-                name="Raw data",
+                name="Raw",
                 line=dict(color="#2563eb", width=2),
-                legendgroup="raw",
             ),
             row=1,
             col=1,
@@ -178,39 +177,36 @@ def create_single_view_figure(
                 mode="lines",
                 name="Baseline",
                 line=dict(color="#ef4444", width=2, dash="dash"),
-                legendgroup="baseline",
             ),
             row=1,
             col=1,
         )
 
-    # mitte: corrected
     if show_corrected:
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=corrected,
                 mode="lines",
-                name="Baseline corrected",
+                name="Corrected",
                 line=dict(color="#0f172a", width=2),
-                legendgroup="corrected",
             ),
-            row=2,
+            row=1,
             col=1,
         )
 
-    # unten: smoothed + peaks
+    # unten
     if show_smoothed:
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=smoothed,
                 mode="lines",
-                name="Baseline corrected & Smoothed",
+                name="Smoothed",
                 line=dict(color="#10b981", width=2.5),
                 legendgroup="smoothed",
             ),
-            row=3,
+            row=2,
             col=1,
         )
 
@@ -232,7 +228,7 @@ def create_single_view_figure(
             _add_peak_annotations(
                 fig,
                 peak_result,
-                row=3,
+                row=2,
                 col=1,
                 marker_color="#10b981",
                 marker_size=8,
@@ -247,18 +243,9 @@ def create_single_view_figure(
     )
 
     fig.update_yaxes(title_text=y_label_top, row=1, col=1)
-    fig.update_yaxes(title_text=y_label_middle, row=2, col=1)
-    fig.update_yaxes(title_text=y_label_bottom, row=3, col=1)
-    fig.update_xaxes(title_text=x_label, row=3, col=1)
-    
-    y_bottom = np.asarray(smoothed if show_smoothed else corrected, dtype=float)
-    if y_bottom.size > 0:
-        ymin = float(np.min(y_bottom))
-        ymax = float(np.max(y_bottom))
-        yrange = ymax - ymin
-        pad = 0.15 * yrange if yrange > 0 else max(abs(ymax) * 0.1, 1.0)
-        fig.update_yaxes(range=[ymin, ymax + pad], row=3, col=1)
-    
+    fig.update_yaxes(title_text=y_label_bottom, row=2, col=1)
+    fig.update_xaxes(title_text=x_label, row=2, col=1)
+
     _expand_xaxis(fig, x)
     return _axis_style(fig)
 
@@ -409,7 +396,7 @@ def create_stacked_figure(
     x_shifts=None,
     title="Stacked Spectra",
     x_label="Raman shift / cm⁻¹",
-    y_label="Stacked normalized intensity",
+    y_label="Normalized intensity",
     step=0.2,
     show_peaks=False,
 ):
