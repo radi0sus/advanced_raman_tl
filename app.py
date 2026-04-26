@@ -325,7 +325,7 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
     )
     
     #st.markdown(f"**Active spectrum:** {selected_spectrum_name}")
-
+    
     selected_overlay_names = st.multiselect(
         "Overlay spectra",
         options=spectrum_names,
@@ -338,15 +338,23 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
         st.session_state[slider_key] = float(
             st.session_state.intensity_scales.get(selected_spectrum_name, 1.0)
         )
-
+        
+    st.markdown(
+        f"""
+        <div style='font-size: 0.7rem; border-radius: 6px; 
+        color: #ff0000; 
+        background-color: #fafafa;'>&nbsp {selected_spectrum_name}</div>
+        """,
+        unsafe_allow_html=True,
+    )
     active_intensity_scale = st.slider(
-        f"Intensity scale: {selected_spectrum_name}",
+        f"Intensity scale: (active spectrum)",
         min_value=0.1,
         max_value=20.0,
         step=0.1,
         key=slider_key,
     )
-
+   
     st.session_state.intensity_scales[selected_spectrum_name] = float(active_intensity_scale)    
     
     
