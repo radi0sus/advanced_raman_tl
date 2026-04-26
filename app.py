@@ -296,9 +296,11 @@ def show_metadata(spectrum: dict):
             lines.append(f"<b>{label}:</b> {value}")
 
     st.markdown(
-        f"<div style='font-size: 0.95rem; line-height: 1.3;'>{'<br>'.join(lines)}</div>",
+        f"<div style='font-size: 0.95rem; line-height: 1.5;'>{'<br>'.join(lines)}</div>",
         unsafe_allow_html=True,
     )
+    
+    st.markdown(f"<div style='font-size: 0.95rem; line-height: 1.5;'>&nbsp</div>",unsafe_allow_html=True,)
 
 init_session_state()
 
