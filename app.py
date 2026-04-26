@@ -354,12 +354,19 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
         
     with st.container(border=True):    
     
-        st.markdown(f"<span style='color: red'>⚠️ Significant data manipulation!</span>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <span style='font-size: 0.9rem; line-height: 1.5; font-weight: 500; 
+            color: red'>
+            ⚠️ Significant data manipulation possible!
+            </span>""", 
+            unsafe_allow_html=True,
+        )
         
         st.markdown(
             f"""
-            <div style='font-size: 0.6rem; border-radius: 6px; 
-            color: #ff0000; 
+            <div style='font-size: 0.6rem; border-radius: 6px; color: red; 
+            font-weight: 500; 
             background-color: None;'>{selected_spectrum_name}<br><br></div>
             """,
             unsafe_allow_html=True,
