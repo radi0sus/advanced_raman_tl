@@ -36,6 +36,9 @@ def init_session_state():
 
     if "file_key_to_name" not in st.session_state:
         st.session_state.file_key_to_name = {}
+        
+    if "intensity_scales" not in st.session_state:
+        st.session_state.intensity_scales = {}
 
 def make_file_key(uploaded_file) -> str:
     data = uploaded_file.getvalue()
@@ -79,6 +82,8 @@ def sync_uploaded_files(uploaded_files):
         filename = st.session_state.file_key_to_name.pop(file_key, None)
         if filename is not None:
             st.session_state.spectra.pop(filename, None)
+            st.session_state.intensity_scales.pop(filename, None)
+            st.session_state.pop(f"intensity_scale_{filename}", None)
 
     # Neue Dateien hinzufügen
     for file_key, uploaded_file in current_map.items():
@@ -227,14 +232,6 @@ def build_processing_kwargs():
                 step=1,
             )
     
-            intensity_scale = st.slider(
-                "Intensity scale",
-                min_value=0.1,
-                max_value=10.0,
-                value=1.0,
-                step=0.1,
-            )
-
         #st.divider()
         
 #        with st.container(border=True):
@@ -252,7 +249,6 @@ def build_processing_kwargs():
         "xmin": float(xmin),
         "xmax": float(xmax),
         "x_shift": float(spectrum_shift),
-        "intensity_scale": float(intensity_scale),
         "baseline_method": baseline_method,
         "baseline_params": baseline_params,
         "smoothing_method": smoothing_method,
@@ -327,12 +323,32 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
         "Active spectrum",
         options=spectrum_names,
     )
+    
+    #st.markdown(f"**Active spectrum:** {selected_spectrum_name}")
 
     selected_overlay_names = st.multiselect(
         "Overlay spectra",
         options=spectrum_names,
         default=spectrum_names,
     )
+    
+    slider_key = f"intensity_scale_{selected_spectrum_name}"
+
+    if slider_key not in st.session_state:
+        st.session_state[slider_key] = float(
+            st.session_state.intensity_scales.get(selected_spectrum_name, 1.0)
+        )
+
+    active_intensity_scale = st.slider(
+        f"Intensity scale: {selected_spectrum_name}",
+        min_value=0.1,
+        max_value=20.0,
+        step=0.1,
+        key=slider_key,
+    )
+
+    st.session_state.intensity_scales[selected_spectrum_name] = float(active_intensity_scale)    
+    
     
     
 with st.sidebar.expander("Display options", expanded=False):
@@ -359,11 +375,18 @@ tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked
 
 with tabs[0]:
     try:
+        single_processing_kwargs = dict(processing_kwargs)
+        single_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(
+            selected_spectrum_name,
+            1.0,
+        )
+        
         result = process_spectrum(
             active_spectrum["x"],
             active_spectrum["y"],
-            **processing_kwargs,
+            **single_processing_kwargs,
         )
+        
         fig = create_single_view_figure(
             result,
             show_peaks=show_peaks,
@@ -387,6 +410,7 @@ with tabs[1]:
             fig = create_overlay_figure(
                 selected_spectra,
                 processing_kwargs=processing_kwargs,
+                intensity_scales=st.session_state.intensity_scales,
                 title="Overlay",
                 show_peaks=show_multi_peaks,
             )
