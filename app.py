@@ -64,6 +64,7 @@ def make_file_key(uploaded_file) -> str:
 
 def parse_uploaded_file(uploaded_file) -> dict:
     suffix = Path(uploaded_file.name).suffix.lower()
+    original_bytes = uploaded_file.getvalue()  # NEU
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(uploaded_file.getbuffer())
@@ -80,6 +81,7 @@ def parse_uploaded_file(uploaded_file) -> dict:
             "y_raw": list(sp.intensities_raw) if sp.intensities_raw is not None else None,
             "metadata": dict(sp.metadata),
             "history": list(sp.history),
+            "original_bytes": original_bytes,  # NEU
         }
     finally:
         try:
@@ -524,6 +526,7 @@ with tabs[4]:
     include_metadata = st.checkbox("Include metadata (TXT)", value=True)
     include_full_figure = st.checkbox("Include full figure (HTML)", value=True)
     include_processed_figure = st.checkbox("Include processed figure (HTML)", value=True)
+    include_original_file = st.checkbox("Include original file (L6S / XML / TXT)", value=True) #NEU
 
     if st.button("Create export package"):
         try:
@@ -584,6 +587,12 @@ with tabs[4]:
                     show_smoothed=True,
                 )
                 files[f"{filename_base}_figure_processed.html"] = build_figure_html_bytes(processed_fig)
+            
+            # NEU    
+            if include_original_file:
+                orig_bytes = active_spectrum.get("original_bytes")
+                if orig_bytes:
+                    files[active_spectrum["filename"]] = orig_bytes
 
             if not files:
                 st.warning("Please select at least one export item.")
