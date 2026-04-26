@@ -337,40 +337,45 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
             st.session_state.intensity_scales.get(selected_spectrum_name, 1.0)
         )
         
-    st.markdown(
-        f"""
-        <div style='font-size: 0.7rem; border-radius: 6px; 
-        color: #ff0000; 
-        background-color: #fafafa;'>&nbsp{selected_spectrum_name}</div>
-        """,
-        unsafe_allow_html=True,
-    )
-    active_intensity_scale = st.slider(
-        f"Intensity scale (active spectrum):",
-        min_value=0.1,
-        max_value=20.0,
-        step=0.1,
-        key=slider_key,
-    )
-   
-    st.session_state.intensity_scales[selected_spectrum_name] = float(active_intensity_scale)    
+    with st.container(border=True):    
     
-    shift_key = f"x_shift_{selected_spectrum_name}"
-    
-    if shift_key not in st.session_state:
-        st.session_state[shift_key] = float(
-            st.session_state.x_shifts.get(selected_spectrum_name, 0.0)
+        st.markdown(f"<span style='color: red'>⚠️ Significant data manipulation!</span>", unsafe_allow_html=True)
+        
+        st.markdown(
+            f"""
+            <div style='font-size: 0.6rem; border-radius: 6px; 
+            color: #ff0000; 
+            background-color: None;'>{selected_spectrum_name}<br><br></div>
+            """,
+            unsafe_allow_html=True,
         )
-    
-    active_x_shift = st.slider(
-        f"Spectrum shift (active spectrum):",
-        min_value=-50.0,
-        max_value=50.0,
-        step=0.1,
-        key=shift_key,
-    )
 
-    st.session_state.x_shifts[selected_spectrum_name] = float(active_x_shift)    
+        active_intensity_scale = st.slider(
+            f"Intensity scale (active spectrum):",
+            min_value=0.1,
+            max_value=20.0,
+            step=0.1,
+            key=slider_key,
+        )
+       
+        st.session_state.intensity_scales[selected_spectrum_name] = float(active_intensity_scale)    
+        
+        shift_key = f"x_shift_{selected_spectrum_name}"
+        
+        if shift_key not in st.session_state:
+            st.session_state[shift_key] = float(
+                st.session_state.x_shifts.get(selected_spectrum_name, 0.0)
+            )
+        
+        active_x_shift = st.slider(
+            f"Spectrum shift (active spectrum):",
+            min_value=-50.0,
+            max_value=50.0,
+            step=0.1,
+            key=shift_key,
+        )
+           
+        st.session_state.x_shifts[selected_spectrum_name] = float(active_x_shift)    
     
 with st.sidebar.expander("Display options", expanded=False):
     show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
