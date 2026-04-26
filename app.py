@@ -19,6 +19,8 @@ from utils.export import (
     build_single_spectrum_csv_bytes,
     build_spectrum_metadata_txt_bytes,
     build_figure_png_bytes,
+    build_figure_html_bytes,
+    build_zip_bytes,
 )
 
 try:
@@ -48,6 +50,12 @@ def init_session_state():
     
     if "x_shifts" not in st.session_state:
         st.session_state.x_shifts = {}
+        
+    if "export_zip_bytes" not in st.session_state:
+        st.session_state.export_zip_bytes = None
+
+    if "export_zip_name" not in st.session_state:
+        st.session_state.export_zip_name = None
 
 def make_file_key(uploaded_file) -> str:
     data = uploaded_file.getvalue()
@@ -511,66 +519,94 @@ with tabs[3]:
         st.error(f"Stacked figure error: {exc}")
 
 with tabs[4]:
-    try:
-        export_processing_kwargs = dict(processing_kwargs)
-        export_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(
-            selected_spectrum_name,
-            1.0,
-        )
-        export_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(
-            selected_spectrum_name,
-            0.0,
-        )
+    st.markdown("### Export active spectrum")
 
-        export_result = process_spectrum(
-            active_spectrum["x"],
-            active_spectrum["y"],
-            **export_processing_kwargs,
-        )
-        
-        export_fig = create_single_view_figure(
-            export_result,
-            show_peaks=show_peaks,
-            title=make_spectrum_title(active_spectrum),
-        )
-        
-        csv_bytes = build_single_spectrum_csv_bytes(
-            export_result,
-            x_shift=st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
-            intensity_scale=st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
-        )
-        
-        metadata_bytes = build_spectrum_metadata_txt_bytes(
-            active_spectrum,
-            processing_kwargs=processing_kwargs,
-            x_shift=st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
-            intensity_scale=st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
-        )
-        
-        png_bytes = build_figure_png_bytes(export_fig)
+    include_csv = st.checkbox("Include processed CSV", value=True)
+    include_metadata = st.checkbox("Include metadata TXT", value=True)
+    include_full_figure = st.checkbox("Include full figure", value=False)
+    include_processed_figure = st.checkbox("Include processed figure", value=False)
 
-        filename_base = Path(active_spectrum.get("filename", "spectrum")).stem
+    if st.button("Create export package"):
+        try:
+            export_processing_kwargs = dict(processing_kwargs)
+            export_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(
+                selected_spectrum_name,
+                1.0,
+            )
+            export_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(
+                selected_spectrum_name,
+                0.0,
+            )
 
+            export_result = process_spectrum(
+                active_spectrum["x"],
+                active_spectrum["y"],
+                **export_processing_kwargs,
+            )
+
+            filename_base = Path(active_spectrum.get("filename", "spectrum")).stem
+            files = {}
+
+            if include_csv:
+                files[f"{filename_base}_processed.csv"] = build_single_spectrum_csv_bytes(
+                    export_result,
+                    x_shift=st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
+                    intensity_scale=st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
+                )
+
+            if include_metadata:
+                files[f"{filename_base}_metadata.txt"] = build_spectrum_metadata_txt_bytes(
+                    active_spectrum,
+                    processing_kwargs=processing_kwargs,
+                    x_shift=st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
+                    intensity_scale=st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
+                )
+
+            if include_full_figure:
+                full_fig = create_single_view_figure(
+                    export_result,
+                    show_peaks=show_peaks,
+                    title=make_spectrum_title(active_spectrum),
+                    show_raw=True,
+                    show_baseline=True,
+                    show_corrected=True,
+                    show_smoothed=True,
+                )
+                try:
+                    #raise RuntimeError("test html fallback")
+                    files[f"{filename_base}_figure_full.png"] = build_figure_png_bytes(full_fig)
+                except Exception:
+                    files[f"{filename_base}_figure_full.html"] = build_figure_html_bytes(full_fig)
+
+            if include_processed_figure:
+                processed_fig = create_single_view_figure(
+                    export_result,
+                    show_peaks=show_peaks,
+                    title=make_spectrum_title(active_spectrum),
+                    show_raw=False,
+                    show_baseline=False,
+                    show_corrected=False,
+                    show_smoothed=True,
+                )
+                try:
+                    #raise RuntimeError("test html fallback")
+                    files[f"{filename_base}_figure_processed.png"] = build_figure_png_bytes(processed_fig)
+                except Exception:
+                   files[f"{filename_base}_figure_processed.html"] = build_figure_html_bytes(processed_fig)
+
+            if not files:
+                st.warning("Please select at least one export item.")
+            else:
+                st.session_state.export_zip_bytes = build_zip_bytes(files)
+                st.session_state.export_zip_name = f"{filename_base}_export.zip"
+                st.success("Export package created.")
+        except Exception as exc:
+            st.error(f"Export error: {exc}")
+
+    if st.session_state.export_zip_bytes is not None and st.session_state.export_zip_name is not None:
         st.download_button(
-            label="Download active spectrum as CSV",
-            data=csv_bytes,
-            file_name=f"{filename_base}_processed.csv",
-            mime="text/csv",
+            label="Download export package",
+            data=st.session_state.export_zip_bytes,
+            file_name=st.session_state.export_zip_name,
+            mime="application/zip",
         )
-        
-        st.download_button(
-            label="Download active spectrum metadata",
-            data=metadata_bytes,
-            file_name=f"{filename_base}_metadata.txt",
-            mime="text/plain",
-        )
-        
-        st.download_button(
-            label="Download active spectrum plot as PNG",
-            data=png_bytes,
-            file_name=f"{filename_base}_plot.png",
-            mime="image/png",
-        )
-
-    except Exception as exc:
-        st.error(f"Export error: {exc}")

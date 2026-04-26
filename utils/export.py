@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import zipfile
 
 
 def build_single_spectrum_csv_bytes(
@@ -108,3 +109,15 @@ def build_figure_png_bytes(fig, width: int = 1600, height: int = 900, scale: int
         height=height,
         scale=scale,
     )
+    
+def build_figure_html_bytes(fig) -> bytes:
+    return fig.to_html(full_html=True, include_plotlyjs=True).encode("utf-8")
+    
+def build_zip_bytes(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for filename, content in files.items():
+            zf.writestr(filename, content)
+
+    return buffer.getvalue()

@@ -128,6 +128,10 @@ def create_single_view_figure(
     title="Processed Spectrum",
     x_label="Raman shift / cm⁻¹",
     y_label="Intensity",
+    show_raw=True,
+    show_baseline=True,
+    show_corrected=True,
+    show_smoothed=True,
 ):
     x = result["x"]
     raw = result["raw"]
@@ -138,47 +142,52 @@ def create_single_view_figure(
 
     fig = go.Figure()
 
-    fig.add_trace(
-        go.Scatter(
-            x=x,
-            y=raw,
-            mode="lines",
-            name="Raw data",
-            line=dict(color="#2563eb", width=2),
-        )
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=x,
-            y=baseline,
-            mode="lines",
-            name="Baseline",
-            line=dict(color="#ef4444", width=2, dash="dash"),
-        )
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=x,
-            y=corrected,
-            mode="lines",
-            name="Baseline corrected",
-            line=dict(color="#0f172a", width=2),
+    if show_raw:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=raw,
+                mode="lines",
+                name="Raw data",
+                line=dict(color="#2563eb", width=2),
             )
         )
 
-    fig.add_trace(
-        go.Scatter(
-            x=x,
-            y=smoothed,
-            mode="lines",
-            name="Baseline corrected & Smoothed",
-            line=dict(color="#10b981", width=2.5),
-            legendgroup="smoothed",
+    if show_baseline:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=baseline,
+                mode="lines",
+                name="Baseline",
+                line=dict(color="#ef4444", width=2, dash="dash"),
+            )
         )
-    )
-    if show_peaks:
+
+    if show_corrected:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=corrected,
+                mode="lines",
+                name="Baseline corrected",
+                line=dict(color="#0f172a", width=2),
+            )
+        )
+
+    if show_smoothed:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=smoothed,
+                mode="lines",
+                name="Baseline corrected & Smoothed",
+                line=dict(color="#10b981", width=2.5),
+                legendgroup="smoothed",
+            )
+        )
+
+    if show_peaks and show_smoothed:
         _add_peak_annotations(
             fig,
             peaks,
@@ -195,7 +204,7 @@ def create_single_view_figure(
         xaxis_title=x_label,
         yaxis_title=y_label,
     )
-    
+
     _expand_xaxis(fig, x)
     return _axis_style(fig)
 
