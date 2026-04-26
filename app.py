@@ -237,24 +237,16 @@ def build_processing_kwargs():
 
         #st.divider()
         
-        with st.container(border=True):
-            st.markdown("#### Range")
-    
-            xmin = st.slider(
-                "X min",
-                min_value=0,
-                max_value=4000,
-                value=100,
-                step=1,
-            )
-            
-            xmax = st.slider(
-                "X max",
-                min_value=0,
-                max_value=4000,
-                value=3200,
-                step=1,
-            )
+#        with st.container(border=True):
+#            st.markdown("#### Range")
+#    
+#            xmin, xmax = st.slider(
+#                "X range",
+#                min_value=0,
+#                max_value=4000,
+#                value=(100, 3200),
+#                step=1,
+#            )
 
     return {
         "xmin": float(xmin),
@@ -344,13 +336,16 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
 with st.sidebar.expander("Display options", expanded=False):
     show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
     show_multi_peaks = st.checkbox("Show peaks (overlay & stacked)", value=True, key="multi_show_peaks")
+    xmin, xmax = st.slider(
+                    "wn range (cm⁻¹)",
+                    min_value=0,
+                    max_value=4000,
+                    value=(100, 3200),
+                    step=1,
+                )
 
 processing_kwargs = build_processing_kwargs()
 
-if processing_kwargs["xmin"] >= processing_kwargs["xmax"]:
-    st.error("Invalid range: X min must be smaller than X max.")
-    st.stop()
-    
 active_spectrum = spectra.get(selected_spectrum_name)
 if active_spectrum is None:
     st.stop()

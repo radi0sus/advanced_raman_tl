@@ -36,6 +36,7 @@ def _axis_style(fig):
         #template="plotly_white",
         #paper_bgcolor="white",
         #plot_bgcolor="white",
+        showlegend=True,
         font=dict(size=13),
         title=dict(
             x=0.0,
