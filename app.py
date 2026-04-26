@@ -524,8 +524,8 @@ with tabs[4]:
 
     include_csv = st.checkbox("Include processed (CSV)", value=True)
     include_metadata = st.checkbox("Include metadata (TXT)", value=True)
-    include_full_figure = st.checkbox("Include full figure (HTML)", value=True)
-    include_processed_figure = st.checkbox("Include processed figure (HTML)", value=True)
+    include_full_figure = st.checkbox("Include figure (HTML)", value=True)
+    #include_processed_figure = st.checkbox("Include processed figure (HTML)", value=True)
     include_original_file = st.checkbox("Include original file (L6S / XML / TXT)", value=True) #NEU
 
     if st.button("Create export package"):
@@ -575,18 +575,6 @@ with tabs[4]:
                     show_smoothed=True,
                 )
                 files[f"{filename_base}_figure_full.html"] = build_figure_html_bytes(full_fig)
-
-            if include_processed_figure:
-                processed_fig = create_single_view_figure(
-                    export_result,
-                    show_peaks=show_peaks,
-                    title=make_spectrum_title(active_spectrum),
-                    show_raw=False,
-                    show_baseline=False,
-                    show_corrected=False,
-                    show_smoothed=True,
-                )
-                files[f"{filename_base}_figure_processed.html"] = build_figure_html_bytes(processed_fig)
             
             # NEU    
             if include_original_file:
