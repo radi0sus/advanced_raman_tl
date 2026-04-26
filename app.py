@@ -15,6 +15,12 @@ from utils.figures import (
     create_stacked_figure,
 )
 
+from utils.export import (
+    build_single_spectrum_csv_bytes,
+    build_spectrum_metadata_txt_bytes,
+    build_figure_png_bytes,
+)
+
 try:
     from utils.figures import make_spectrum_title
 except ImportError:
@@ -398,7 +404,7 @@ if active_spectrum is None:
 with st.sidebar.expander("Spectrum Info", expanded=False):
     show_metadata(active_spectrum)
 
-tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra"])
+tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra", "Export"])
 
 with tabs[0]:
     try:
@@ -504,3 +510,67 @@ with tabs[3]:
     except Exception as exc:
         st.error(f"Stacked figure error: {exc}")
 
+with tabs[4]:
+    try:
+        export_processing_kwargs = dict(processing_kwargs)
+        export_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(
+            selected_spectrum_name,
+            1.0,
+        )
+        export_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(
+            selected_spectrum_name,
+            0.0,
+        )
+
+        export_result = process_spectrum(
+            active_spectrum["x"],
+            active_spectrum["y"],
+            **export_processing_kwargs,
+        )
+        
+        export_fig = create_single_view_figure(
+            export_result,
+            show_peaks=show_peaks,
+            title=make_spectrum_title(active_spectrum),
+        )
+        
+        csv_bytes = build_single_spectrum_csv_bytes(
+            export_result,
+            x_shift=st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
+            intensity_scale=st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
+        )
+        
+        metadata_bytes = build_spectrum_metadata_txt_bytes(
+            active_spectrum,
+            processing_kwargs=processing_kwargs,
+            x_shift=st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
+            intensity_scale=st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
+        )
+        
+        png_bytes = build_figure_png_bytes(export_fig)
+
+        filename_base = Path(active_spectrum.get("filename", "spectrum")).stem
+
+        st.download_button(
+            label="Download active spectrum as CSV",
+            data=csv_bytes,
+            file_name=f"{filename_base}_processed.csv",
+            mime="text/csv",
+        )
+        
+        st.download_button(
+            label="Download active spectrum metadata",
+            data=metadata_bytes,
+            file_name=f"{filename_base}_metadata.txt",
+            mime="text/plain",
+        )
+        
+        st.download_button(
+            label="Download active spectrum plot as PNG",
+            data=png_bytes,
+            file_name=f"{filename_base}_plot.png",
+            mime="image/png",
+        )
+
+    except Exception as exc:
+        st.error(f"Export error: {exc}")
