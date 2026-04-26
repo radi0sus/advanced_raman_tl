@@ -39,6 +39,9 @@ def init_session_state():
         
     if "intensity_scales" not in st.session_state:
         st.session_state.intensity_scales = {}
+    
+    if "x_shifts" not in st.session_state:
+        st.session_state.x_shifts = {}
 
 def make_file_key(uploaded_file) -> str:
     data = uploaded_file.getvalue()
@@ -83,7 +86,9 @@ def sync_uploaded_files(uploaded_files):
         if filename is not None:
             st.session_state.spectra.pop(filename, None)
             st.session_state.intensity_scales.pop(filename, None)
+            st.session_state.x_shifts.pop(filename, None)
             st.session_state.pop(f"intensity_scale_{filename}", None)
+            st.session_state.pop(f"x_shift_{filename}", None)
 
     # Neue Dateien hinzufügen
     for file_key, uploaded_file in current_map.items():
@@ -224,17 +229,6 @@ def build_processing_kwargs():
                 value=8.0,
                 step=1.0,
             )
-
-        #st.divider()
-        with st.container(border=True):
-            st.markdown("#### Transformation")
-            spectrum_shift = st.slider(
-                "Spectrum shift (cm⁻¹)",
-                min_value=-50,
-                max_value=50,
-                value=0,
-                step=1,
-            )
     
         #st.divider()
         
@@ -252,7 +246,7 @@ def build_processing_kwargs():
     return {
         "xmin": float(xmin),
         "xmax": float(xmax),
-        "x_shift": float(spectrum_shift),
+        #"x_shift": float(spectrum_shift),
         "baseline_method": baseline_method,
         "baseline_params": baseline_params,
         "smoothing_method": smoothing_method,
@@ -347,12 +341,12 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
         f"""
         <div style='font-size: 0.7rem; border-radius: 6px; 
         color: #ff0000; 
-        background-color: #fafafa;'>&nbsp {selected_spectrum_name}</div>
+        background-color: #fafafa;'>&nbsp{selected_spectrum_name}</div>
         """,
         unsafe_allow_html=True,
     )
     active_intensity_scale = st.slider(
-        f"Intensity scale: (active spectrum)",
+        f"Intensity scale (active spectrum):",
         min_value=0.1,
         max_value=20.0,
         step=0.1,
@@ -361,7 +355,22 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
    
     st.session_state.intensity_scales[selected_spectrum_name] = float(active_intensity_scale)    
     
+    shift_key = f"x_shift_{selected_spectrum_name}"
     
+    if shift_key not in st.session_state:
+        st.session_state[shift_key] = float(
+            st.session_state.x_shifts.get(selected_spectrum_name, 0.0)
+        )
+    
+    active_x_shift = st.slider(
+        f"Spectrum shift (active spectrum):",
+        min_value=-50.0,
+        max_value=50.0,
+        step=0.1,
+        key=shift_key,
+    )
+
+    st.session_state.x_shifts[selected_spectrum_name] = float(active_x_shift)    
     
 with st.sidebar.expander("Display options", expanded=False):
     show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
@@ -394,6 +403,11 @@ with tabs[0]:
             1.0,
         )
         
+        single_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(
+            selected_spectrum_name,
+            0.0,
+        )
+        
         result = process_spectrum(
             active_spectrum["x"],
             active_spectrum["y"],
@@ -424,6 +438,7 @@ with tabs[1]:
                 selected_spectra,
                 processing_kwargs=processing_kwargs,
                 intensity_scales=st.session_state.intensity_scales,
+                x_shifts=st.session_state.x_shifts,
                 title="Overlay",
                 show_peaks=show_multi_peaks,
             )
@@ -445,6 +460,7 @@ with tabs[2]:
             fig = create_normalized_overlay_figure(
                 selected_spectra,
                 processing_kwargs=processing_kwargs,
+                x_shifts=st.session_state.x_shifts,
                 title="Normalized Overlay",
                 show_peaks=show_multi_peaks,
             )
@@ -474,6 +490,7 @@ with tabs[3]:
             fig = create_stacked_figure(
                 selected_spectra,
                 processing_kwargs=processing_kwargs,
+                x_shifts=st.session_state.x_shifts,
                 title="Stacked Spectra",
                 show_peaks=show_multi_peaks,
                 step=stack_step,

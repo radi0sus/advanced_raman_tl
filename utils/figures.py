@@ -203,6 +203,7 @@ def create_overlay_figure(
     spectra_dict,
     processing_kwargs=None,
     intensity_scales=None,
+    x_shifts=None, 
     title="Overlay",
     x_label="Raman shift / cm⁻¹",
     y_label="Intensity",
@@ -212,6 +213,8 @@ def create_overlay_figure(
     
     processing_kwargs = processing_kwargs or {}
     intensity_scales = intensity_scales or {}
+    x_shifts = x_shifts or {}
+    
     fig = go.Figure()
 
     for i, (name, spectrum) in enumerate(spectra_dict.items()):
@@ -219,6 +222,7 @@ def create_overlay_figure(
         
         local_processing_kwargs = dict(processing_kwargs)
         local_processing_kwargs["intensity_scale"] = intensity_scales.get(name, 1.0)
+        local_processing_kwargs["x_shift"] = x_shifts.get(name, 0.0)
 
         result = process_spectrum(
             spectrum["x"],
@@ -264,6 +268,7 @@ def create_overlay_figure(
 def create_normalized_overlay_figure(
     spectra_dict,
     processing_kwargs=None,
+    x_shifts=None, 
     title="Normalized Overlay",
     x_label="Raman shift / cm⁻¹",
     y_label="Normalized intensity",
@@ -273,15 +278,19 @@ def create_normalized_overlay_figure(
     all_x = []
     
     processing_kwargs = processing_kwargs or {}
+    x_shifts = x_shifts or {}
     fig = go.Figure()
 
     for i, (name, spectrum) in enumerate(spectra_dict.items()):
         color = PLOT_COLORS[i % len(PLOT_COLORS)]
 
+        local_processing_kwargs = dict(processing_kwargs)
+        local_processing_kwargs["x_shift"] = x_shifts.get(name, 0.0)
+
         result = process_spectrum(
             spectrum["x"],
             spectrum["y"],
-            **processing_kwargs,
+            **local_processing_kwargs,
         )
         
         all_x.extend(result["x"])
@@ -334,6 +343,7 @@ def create_normalized_overlay_figure(
 def create_stacked_figure(
     spectra_dict,
     processing_kwargs=None,
+    x_shifts=None,
     title="Stacked Spectra",
     x_label="Raman shift / cm⁻¹",
     y_label="Stacked normalized intensity",
@@ -344,15 +354,19 @@ def create_stacked_figure(
     all_x = []
     
     processing_kwargs = processing_kwargs or {}
+    x_shifts = x_shifts or {}
     fig = go.Figure()
 
     for i, (name, spectrum) in enumerate(spectra_dict.items()):
         color = PLOT_COLORS[i % len(PLOT_COLORS)]
 
+        local_processing_kwargs = dict(processing_kwargs)
+        local_processing_kwargs["x_shift"] = x_shifts.get(name, 0.0)
+
         result = process_spectrum(
             spectrum["x"],
             spectrum["y"],
-            **processing_kwargs,
+             **local_processing_kwargs,
         )
 
         all_x.extend(result["x"])
