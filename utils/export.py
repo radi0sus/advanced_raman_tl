@@ -102,14 +102,6 @@ def build_spectrum_metadata_txt_bytes(
 
     return "\n".join(lines).encode("utf-8")
     
-def build_figure_png_bytes(fig, width: int = 1600, height: int = 900, scale: int = 2) -> bytes:
-    return fig.to_image(
-        format="png",
-        width=width,
-        height=height,
-        scale=scale,
-    )
-    
 def build_figure_html_bytes(fig) -> bytes:
     return fig.to_html(full_html=True, include_plotlyjs=True).encode("utf-8")
     

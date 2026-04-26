@@ -18,7 +18,6 @@ from utils.figures import (
 from utils.export import (
     build_single_spectrum_csv_bytes,
     build_spectrum_metadata_txt_bytes,
-    build_figure_png_bytes,
     build_figure_html_bytes,
     build_zip_bytes,
 )
@@ -521,10 +520,10 @@ with tabs[3]:
 with tabs[4]:
     st.markdown("### Export active spectrum")
 
-    include_csv = st.checkbox("Include processed CSV", value=True)
-    include_metadata = st.checkbox("Include metadata TXT", value=True)
-    include_full_figure = st.checkbox("Include full figure", value=False)
-    include_processed_figure = st.checkbox("Include processed figure", value=False)
+    include_csv = st.checkbox("Include processed (CSV)", value=True)
+    include_metadata = st.checkbox("Include metadata (TXT)", value=True)
+    include_full_figure = st.checkbox("Include full figure (HTML)", value=True)
+    include_processed_figure = st.checkbox("Include processed figure (HTML)", value=True)
 
     if st.button("Create export package"):
         try:
@@ -572,11 +571,7 @@ with tabs[4]:
                     show_corrected=True,
                     show_smoothed=True,
                 )
-                try:
-                    #raise RuntimeError("test html fallback")
-                    files[f"{filename_base}_figure_full.png"] = build_figure_png_bytes(full_fig)
-                except Exception:
-                    files[f"{filename_base}_figure_full.html"] = build_figure_html_bytes(full_fig)
+                files[f"{filename_base}_figure_full.html"] = build_figure_html_bytes(full_fig)
 
             if include_processed_figure:
                 processed_fig = create_single_view_figure(
@@ -588,11 +583,7 @@ with tabs[4]:
                     show_corrected=False,
                     show_smoothed=True,
                 )
-                try:
-                    #raise RuntimeError("test html fallback")
-                    files[f"{filename_base}_figure_processed.png"] = build_figure_png_bytes(processed_fig)
-                except Exception:
-                   files[f"{filename_base}_figure_processed.html"] = build_figure_html_bytes(processed_fig)
+                files[f"{filename_base}_figure_processed.html"] = build_figure_html_bytes(processed_fig)
 
             if not files:
                 st.warning("Please select at least one export item.")
