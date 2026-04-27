@@ -360,7 +360,7 @@ def build_summary_html_bytes(
 
     body_parts.append(f"""
     <h1>Raman Analysis Session Export</h1>
-    <div class="section summary-overview-section">
+    <div id="nav-overview" class="section summary-overview-section">
       <h2>Session overview</h2>
       <table class="meta">
         <tr><th>Export time</th><td>{html.escape(export_time)}</td></tr>
@@ -372,18 +372,25 @@ def build_summary_html_bytes(
     """)
 
     body_parts.append(f"""
-    <div class="section summary-processing-section">
+    <div id="nav-processing" class="section summary-processing-section">
       <h2>Processing settings</h2>
       {processing_to_html()}
     </div>
     """)
 
-    body_parts.append('<div class="section"><h2>Individual spectra</h2></div>')
+    body_parts.append('<div id="nav-spectra" class="section"><h2>Individual spectra</h2></div>')
+
+    spectrum_nav_links = []
 
     for i, (name, spectrum) in enumerate(spectra.items(), start=1):
         result = single_results[name]
         filename_base = spectrum.get("filename", name)
         stem = filename_base.rsplit(".", 1)[0]
+
+        section_id = f"spectrum-{i}"
+        spectrum_nav_links.append(
+            f'<a href="#{section_id}" title="{html.escape(name)}">{i}</a>'
+        )
 
         links = []
 
@@ -408,10 +415,12 @@ def build_summary_html_bytes(
         div_id = f"single_plot_{i}"
         add_plot(fig, div_id)
 
+        links_html = f'<div class="links">{" | ".join(links)}</div>' if links else ""
+
         body_parts.append(f"""
-        <div class="section spectrum-section summary-single-spectrum">
+        <div id="{section_id}" class="section spectrum-section summary-single-spectrum">
           <h3>{html.escape(name)}</h3>
-          <div class="links">{' | '.join(links)}</div>
+          {links_html}
           <table class="meta">
             {metadata_to_html(spectrum)}
             <tr><th>Wavenumber shift</th><td>{html.escape(fmt_pretty(float(x_shifts.get(name, 0.0))))} cm⁻¹</td></tr>
@@ -421,17 +430,19 @@ def build_summary_html_bytes(
         </div>
         """)
 
-    body_parts.append('<div class="section"><h2>Overlay views</h2></div>')
+    body_parts.append('<div id="nav-overlay" class="section"><h2>Overlay views</h2></div>')
 
     overlay_links = []
     if overlay_csv_path:
         overlay_links.append(f'<a href="{html.escape(overlay_csv_path)}">Overlay CSV</a>')
 
+    overlay_links_html = f'<div class="links">{" | ".join(overlay_links)}</div>' if overlay_links else ""
+
     body_parts.append(f"""
     <div class="section spectrum-section summary-overlay-info">
       <h3>Selected spectra in overlays</h3>
       <div>{html.escape(', '.join(overlay_names) if overlay_names else 'None')}</div>
-      <div class="links">{' | '.join(overlay_links)}</div>
+      {overlay_links_html}
     </div>
     """)
 
@@ -468,6 +479,60 @@ def build_summary_html_bytes(
       <title>Raman Analysis Session Export</title>
       <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
       <style>
+        #raman-navbar {{
+          position: sticky;
+          top: 0;
+          z-index: 1000;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.75rem;
+          background: white;
+          border-bottom: 1px solid #cbd5e1;
+          padding: 0.75rem 0;
+          margin-bottom: 1.5rem;
+        }}
+
+        #raman-navbar .nav-title {{
+          font-weight: 700;
+          color: #334155;
+          margin-right: 0.5rem;
+        }}
+
+        #raman-navbar a {{
+          color: #2563eb;
+          text-decoration: none;
+          font-size: 0.95rem;
+        }}
+
+        #raman-navbar a:hover {{
+          text-decoration: underline;
+        }}
+
+        #raman-navbar .nav-subtitle {{
+          color: #475569;
+          font-size: 0.9rem;
+          margin-left: 0.5rem;
+        }}
+
+        #raman-navbar .nav-divider {{
+          color: #94a3b8;
+          margin: 0 0.25rem;
+        }}
+        
+        #nav-overview,
+        #nav-processing,
+        #nav-spectra,
+        #nav-overlay {{
+          scroll-margin-top: 4.5rem;
+        }}
+
+        @media print {{
+          #raman-navbar {{
+            display: none;
+          }}
+        }}
+
         body {{
           font-family: Arial, sans-serif;
           margin: 24px;
@@ -530,9 +595,22 @@ def build_summary_html_bytes(
           margin-bottom: 0.4rem;
           color: #1e293b;
         }}
+        .summary-single-spectrum {{
+          scroll-margin-top: 4.5rem;
+        }}
       </style>
     </head>
     <body>
+      <nav id="raman-navbar">
+        <span class="nav-title">Raman Export</span>
+        <a href="#nav-overview">Overview</a>
+        <a href="#nav-processing">Processing</a>
+        <a href="#nav-spectra">Spectra</a>
+        <a href="#nav-overlay">Overlays</a>
+        <span class="nav-divider">|</span>
+        <span class="nav-subtitle">Singles:</span>
+        {''.join(spectrum_nav_links)}
+      </nav>
       {''.join(body_parts)}
       <script>
         {''.join(plot_scripts)}
