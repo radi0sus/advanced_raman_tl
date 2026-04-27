@@ -1142,6 +1142,7 @@ with tabs[4]:
                             processing_kwargs=processing_kwargs,
                             x_shifts=st.session_state.x_shifts,
                             intensity_scales=st.session_state.intensity_scales,
+                            include_single_file_links=include_session_single_exports,
                             include_original_file_links=include_session_original_files,
                             overlay_csv_path=overlay_csv_path,
                         )

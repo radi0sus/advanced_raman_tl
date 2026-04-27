@@ -180,6 +180,7 @@ def build_summary_html_bytes(
     processing_kwargs: dict,
     x_shifts: dict[str, float] | None = None,
     intensity_scales: dict[str, float] | None = None,
+    include_single_file_links: bool = True,
     include_original_file_links: bool = True,
     overlay_csv_path: str | None = "overlay/overlay_processed.csv",
 ) -> bytes:
@@ -384,12 +385,15 @@ def build_summary_html_bytes(
         filename_base = spectrum.get("filename", name)
         stem = filename_base.rsplit(".", 1)[0]
 
-        links = [
-            f'<a href="{html.escape(name)}/{html.escape(stem)}_processed.csv">Processed CSV</a>',
-            f'<a href="{html.escape(name)}/{html.escape(stem)}_metadata.txt">Metadata TXT</a>',
-        ]
+        links = []
 
-        if include_original_file_links and spectrum.get("original_bytes"):
+        if include_single_file_links:
+            links.extend([
+                f'<a href="{html.escape(name)}/{html.escape(stem)}_processed.csv">Processed CSV</a>',
+                f'<a href="{html.escape(name)}/{html.escape(stem)}_metadata.txt">Metadata TXT</a>',
+            ])
+
+        if include_original_file_links and spectrum.get("filename"):
             links.append(
                 f'<a href="{html.escape(name)}/{html.escape(spectrum.get("filename", name))}">Original file</a>'
             )
