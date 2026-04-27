@@ -137,6 +137,7 @@ def sync_uploaded_files(uploaded_files):
     # reset wn slider
     if not st.session_state.spectra:
         st.session_state.pop("wn_range", None)
+        st.session_state.pop("stack_step", None)
 
 
 def build_processing_kwargs():
