@@ -52,6 +52,10 @@ def init_session_state():
     
     if "x_shifts" not in st.session_state:
         st.session_state.x_shifts = {}
+
+    # Bytes separat vom spectra-Dict, damit der Session State klein bleibt
+    if "original_bytes_cache" not in st.session_state:
+        st.session_state.original_bytes_cache = {}
         
     if "single_export_zip_bytes" not in st.session_state:
         st.session_state.single_export_zip_bytes = None
@@ -88,7 +92,7 @@ def make_file_key(uploaded_file) -> str:
 
 def parse_uploaded_file(uploaded_file) -> dict:
     suffix = Path(uploaded_file.name).suffix.lower()
-    original_bytes = uploaded_file.getvalue()  # NEU
+    original_bytes = uploaded_file.getvalue()
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(uploaded_file.getbuffer())
@@ -96,7 +100,7 @@ def parse_uploaded_file(uploaded_file) -> dict:
 
     try:
         sp = load(tmp_path)
-        return {
+        result = {
             "filename": uploaded_file.name,
             "name": uploaded_file.name,
             "is_blc": sp.is_blc,
@@ -105,8 +109,12 @@ def parse_uploaded_file(uploaded_file) -> dict:
             "y_raw": list(sp.intensities_raw) if sp.intensities_raw is not None else None,
             "metadata": dict(sp.metadata),
             "history": list(sp.history),
-            "original_bytes": original_bytes,  # NEU
+            # original_bytes wird NICHT hier gespeichert, sondern separat in
+            # original_bytes_cache, damit der Session State klein bleibt.
         }
+        # Bytes direkt in den separaten Cache schreiben
+        st.session_state.original_bytes_cache[uploaded_file.name] = original_bytes
+        return result
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -128,6 +136,7 @@ def sync_uploaded_files(uploaded_files):
             st.session_state.spectra.pop(filename, None)
             st.session_state.intensity_scales.pop(filename, None)
             st.session_state.x_shifts.pop(filename, None)
+            st.session_state.original_bytes_cache.pop(filename, None)
             st.session_state.pop(f"intensity_scale_{filename}", None)
             st.session_state.pop(f"x_shift_{filename}", None)
             had_changes = True
@@ -368,6 +377,84 @@ def run_processed(x, y, kwargs):
         json.dumps(kwargs, sort_keys=True),
     )
 
+
+def _spectra_to_hashable(spectra_dict: dict) -> tuple:
+    """Konvertiert ein spectra-Dict vollständig in ein hashbares Format für st.cache_data.
+    Alle Felder werden hier eingebettet, damit die gecachten Funktionen
+    KEIN st.session_state mehr intern lesen müssen.
+    """
+    def _val_to_hashable(v):
+        if isinstance(v, list):
+            return tuple(v)
+        if isinstance(v, dict):
+            return tuple(sorted((k, _val_to_hashable(w)) for k, w in v.items()))
+        return v
+
+    return tuple(
+        (
+            name,
+            tuple(sorted(
+                (k, _val_to_hashable(v))
+                for k, v in sp.items()
+            )),
+        )
+        for name, sp in sorted(spectra_dict.items())
+    )
+
+
+def _hashable_to_spectra(spectra_hashable: tuple) -> dict:
+    """Rekonstruiert das spectra-Dict aus dem hashbaren Format."""
+    def _val_from_hashable(v):
+        if isinstance(v, tuple) and v and isinstance(v[0], tuple) and len(v[0]) == 2:
+            # Könnte ein dict sein – prüfen ob alle Elemente 2-Tuples sind
+            try:
+                return {k: _val_from_hashable(w) for k, w in v}
+            except (TypeError, ValueError):
+                return list(v)
+        if isinstance(v, tuple):
+            return list(v)
+        return v
+
+    result = {}
+    for name, fields in spectra_hashable:
+        result[name] = {k: _val_from_hashable(v) for k, v in fields}
+    return result
+
+
+@st.cache_data(show_spinner=False)
+def cached_overlay_figure(spectra_hashable, kwargs_json, intensity_scales_json, x_shifts_json, title, show_peaks):
+    return create_overlay_figure(
+        _hashable_to_spectra(spectra_hashable),
+        processing_kwargs=json.loads(kwargs_json),
+        intensity_scales=json.loads(intensity_scales_json),
+        x_shifts=json.loads(x_shifts_json),
+        title=title,
+        show_peaks=show_peaks,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def cached_normalized_overlay_figure(spectra_hashable, kwargs_json, x_shifts_json, title, show_peaks):
+    return create_normalized_overlay_figure(
+        _hashable_to_spectra(spectra_hashable),
+        processing_kwargs=json.loads(kwargs_json),
+        x_shifts=json.loads(x_shifts_json),
+        title=title,
+        show_peaks=show_peaks,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def cached_stacked_figure(spectra_hashable, kwargs_json, x_shifts_json, title, show_peaks, step):
+    return create_stacked_figure(
+        _hashable_to_spectra(spectra_hashable),
+        processing_kwargs=json.loads(kwargs_json),
+        x_shifts=json.loads(x_shifts_json),
+        title=title,
+        show_peaks=show_peaks,
+        step=step,
+    )
+
 def build_session_export_signature(
     spectra: dict,
     selected_overlay_names: list[str],
@@ -598,13 +685,13 @@ with tabs[1]:
         if not selected_spectra:
             st.warning("Please select at least one spectrum for overlay.")
         else:
-            fig = create_overlay_figure(
-                selected_spectra,
-                processing_kwargs=processing_kwargs,
-                intensity_scales=st.session_state.intensity_scales,
-                x_shifts=st.session_state.x_shifts,
-                title="Overlay",
-                show_peaks=show_multi_peaks,
+            fig = cached_overlay_figure(
+                _spectra_to_hashable(selected_spectra),
+                json.dumps(processing_kwargs, sort_keys=True),
+                json.dumps(dict(sorted(st.session_state.intensity_scales.items()))),
+                json.dumps(dict(sorted(st.session_state.x_shifts.items()))),
+                "Overlay",
+                show_multi_peaks,
             )
             st.plotly_chart(fig, width="stretch")
     except Exception as exc:
@@ -621,12 +708,12 @@ with tabs[2]:
         if not selected_spectra:
             st.warning("Please select at least one spectrum for normalized overlay.")
         else:
-            fig = create_normalized_overlay_figure(
-                selected_spectra,
-                processing_kwargs=processing_kwargs,
-                x_shifts=st.session_state.x_shifts,
-                title="Normalized Overlay",
-                show_peaks=show_multi_peaks,
+            fig = cached_normalized_overlay_figure(
+                _spectra_to_hashable(selected_spectra),
+                json.dumps(processing_kwargs, sort_keys=True),
+                json.dumps(dict(sorted(st.session_state.x_shifts.items()))),
+                "Normalized Overlay",
+                show_multi_peaks,
             )
             st.plotly_chart(fig, width="stretch")
     except Exception as exc:
@@ -652,13 +739,13 @@ with tabs[3]:
                 key="stack_step",
             )
 
-            fig = create_stacked_figure(
-                selected_spectra,
-                processing_kwargs=processing_kwargs,
-                x_shifts=st.session_state.x_shifts,
-                title="Stacked Spectra",
-                show_peaks=show_multi_peaks,
-                step=stack_step,
+            fig = cached_stacked_figure(
+                _spectra_to_hashable(selected_spectra),
+                json.dumps(processing_kwargs, sort_keys=True),
+                json.dumps(dict(sorted(st.session_state.x_shifts.items()))),
+                "Stacked Spectra",
+                show_multi_peaks,
+                stack_step,
             )
             st.plotly_chart(fig, width="stretch")
     except Exception as exc:
@@ -744,7 +831,7 @@ with tabs[4]:
                     files[f"{filename_base}_figure_full.html"] = build_figure_html_bytes(full_fig)
 
                 if include_original_file:
-                    orig_bytes = active_spectrum.get("original_bytes")
+                    orig_bytes = st.session_state.original_bytes_cache.get(active_spectrum["filename"])
                     if orig_bytes:
                         files[active_spectrum["filename"]] = orig_bytes
 
@@ -828,35 +915,39 @@ with tabs[4]:
                                 local_processing_kwargs,
                             )
 
+                    _spectra_hashable = _spectra_to_hashable(selected_spectra)
+                    _kwargs_json = json.dumps(processing_kwargs, sort_keys=True)
+                    _x_shifts_json = json.dumps(dict(sorted(st.session_state.x_shifts.items())))
+
                     if include_overlay_html:
-                        overlay_fig = create_overlay_figure(
-                            selected_spectra,
-                            processing_kwargs=processing_kwargs,
-                            intensity_scales=st.session_state.intensity_scales,
-                            x_shifts=st.session_state.x_shifts,
-                            title="Overlay",
-                            show_peaks=show_multi_peaks,
+                        overlay_fig = cached_overlay_figure(
+                            _spectra_hashable,
+                            _kwargs_json,
+                            json.dumps(dict(sorted(st.session_state.intensity_scales.items()))),
+                            _x_shifts_json,
+                            "Overlay",
+                            show_multi_peaks,
                         )
                         files["overlay/overlay_plot.html"] = build_figure_html_bytes(overlay_fig)
 
                     if include_normalized_html:
-                        normalized_fig = create_normalized_overlay_figure(
-                            selected_spectra,
-                            processing_kwargs=processing_kwargs,
-                            x_shifts=st.session_state.x_shifts,
-                            title="Normalized Overlay",
-                            show_peaks=show_multi_peaks,
+                        normalized_fig = cached_normalized_overlay_figure(
+                            _spectra_hashable,
+                            _kwargs_json,
+                            _x_shifts_json,
+                            "Normalized Overlay",
+                            show_multi_peaks,
                         )
                         files["overlay/normalized_overlay_plot.html"] = build_figure_html_bytes(normalized_fig)
 
                     if include_stacked_html:
-                        stacked_fig = create_stacked_figure(
-                            selected_spectra,
-                            processing_kwargs=processing_kwargs,
-                            x_shifts=st.session_state.x_shifts,
-                            title="Stacked Spectra",
-                            show_peaks=show_multi_peaks,
-                            step=st.session_state.get("stack_step", 1.2),
+                        stacked_fig = cached_stacked_figure(
+                            _spectra_hashable,
+                            _kwargs_json,
+                            _x_shifts_json,
+                            "Stacked Spectra",
+                            show_multi_peaks,
+                            st.session_state.get("stack_step", 1.2),
                         )
                         files["overlay/stacked_plot.html"] = build_figure_html_bytes(stacked_fig)
 
@@ -975,7 +1066,7 @@ with tabs[4]:
                             )
 
                         if include_session_original_files:
-                            orig_bytes = spectrum.get("original_bytes")
+                            orig_bytes = st.session_state.original_bytes_cache.get(spectrum["filename"])
                             if orig_bytes:
                                 files[f"{name}/{spectrum['filename']}"] = orig_bytes
 
@@ -1003,30 +1094,34 @@ with tabs[4]:
                     stacked_fig = None
 
                     if include_session_summary:
-                        overlay_fig = create_overlay_figure(
-                            selected_spectra,
-                            processing_kwargs=processing_kwargs,
-                            intensity_scales=st.session_state.intensity_scales,
-                            x_shifts=st.session_state.x_shifts,
-                            title="Overlay",
-                            show_peaks=show_multi_peaks,
+                        _spectra_hashable = _spectra_to_hashable(selected_spectra)
+                        _kwargs_json = json.dumps(processing_kwargs, sort_keys=True)
+                        _x_shifts_json = json.dumps(dict(sorted(st.session_state.x_shifts.items())))
+
+                        overlay_fig = cached_overlay_figure(
+                            _spectra_hashable,
+                            _kwargs_json,
+                            json.dumps(dict(sorted(st.session_state.intensity_scales.items()))),
+                            _x_shifts_json,
+                            "Overlay",
+                            show_multi_peaks,
                         )
 
-                        normalized_fig = create_normalized_overlay_figure(
-                            selected_spectra,
-                            processing_kwargs=processing_kwargs,
-                            x_shifts=st.session_state.x_shifts,
-                            title="Normalized Overlay",
-                            show_peaks=show_multi_peaks,
+                        normalized_fig = cached_normalized_overlay_figure(
+                            _spectra_hashable,
+                            _kwargs_json,
+                            _x_shifts_json,
+                            "Normalized Overlay",
+                            show_multi_peaks,
                         )
 
-                        stacked_fig = create_stacked_figure(
-                            selected_spectra,
-                            processing_kwargs=processing_kwargs,
-                            x_shifts=st.session_state.x_shifts,
-                            title="Stacked Spectra",
-                            show_peaks=show_multi_peaks,
-                            step=st.session_state.get("stack_step", 1.2),
+                        stacked_fig = cached_stacked_figure(
+                            _spectra_hashable,
+                            _kwargs_json,
+                            _x_shifts_json,
+                            "Stacked Spectra",
+                            show_multi_peaks,
+                            st.session_state.get("stack_step", 1.2),
                         )
 
                     overlay_csv_path = None
