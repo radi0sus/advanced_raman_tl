@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 from pathlib import Path
 
@@ -69,6 +70,15 @@ def init_session_state():
 
     if "session_export_zip_name" not in st.session_state:
         st.session_state.session_export_zip_name = None
+        
+    if "single_export_signature" not in st.session_state:
+        st.session_state.single_export_signature = None
+
+    if "multi_export_signature" not in st.session_state:
+        st.session_state.multi_export_signature = None
+    
+    if "session_export_signature" not in st.session_state:
+        st.session_state.session_export_signature = None
 
 def make_file_key(uploaded_file) -> str:
     data = uploaded_file.getvalue()
@@ -108,6 +118,8 @@ def sync_uploaded_files(uploaded_files):
     current_map = {make_file_key(f): f for f in current_files}
     current_keys = set(current_map.keys())
 
+    had_changes = False
+
     # Dateien entfernen, die nicht mehr im Uploader sind
     removed_keys = st.session_state.uploaded_file_keys - current_keys
     for file_key in removed_keys:
@@ -118,6 +130,7 @@ def sync_uploaded_files(uploaded_files):
             st.session_state.x_shifts.pop(filename, None)
             st.session_state.pop(f"intensity_scale_{filename}", None)
             st.session_state.pop(f"x_shift_{filename}", None)
+            had_changes = True
 
     # Neue Dateien hinzufügen
     for file_key, uploaded_file in current_map.items():
@@ -128,12 +141,28 @@ def sync_uploaded_files(uploaded_files):
             sp = parse_uploaded_file(uploaded_file)
             st.session_state.spectra[sp["filename"]] = sp
             st.session_state.file_key_to_name[file_key] = sp["filename"]
+            had_changes = True
         except Exception as exc:
             st.sidebar.error(f"Failed to parse {uploaded_file.name}: {exc}")
 
     # Synchronisierten Stand speichern
     st.session_state.uploaded_file_keys = current_keys
-    
+
+    # Exportzustände invalidieren, wenn sich Uploads geändert haben
+    if had_changes:
+        st.session_state.single_export_zip_bytes = None
+        st.session_state.single_export_zip_name = None
+
+        st.session_state.multi_export_zip_bytes = None
+        st.session_state.multi_export_zip_name = None
+
+        st.session_state.session_export_zip_bytes = None
+        st.session_state.session_export_zip_name = None
+        
+        st.session_state.session_export_signature = None
+        st.session_state.single_export_signature = None
+        st.session_state.multi_export_signature = None
+
     # reset wn slider
     if not st.session_state.spectra:
         st.session_state.pop("wn_range", None)
@@ -326,6 +355,99 @@ def show_metadata(spectrum: dict):
     
     st.markdown(f"<div style='font-size: 0.95rem; line-height: 1.5;'>&nbsp</div>",unsafe_allow_html=True,)
 
+@st.cache_data(show_spinner=False)
+def cached_process_spectrum(x_tuple, y_tuple, kwargs_json):
+    kwargs = json.loads(kwargs_json)
+    return process_spectrum(list(x_tuple), list(y_tuple), **kwargs)
+
+
+def run_processed(x, y, kwargs):
+    return cached_process_spectrum(
+        tuple(x),
+        tuple(y),
+        json.dumps(kwargs, sort_keys=True),
+    )
+
+def build_session_export_signature(
+    spectra: dict,
+    selected_overlay_names: list[str],
+    processing_kwargs: dict,
+    include_session_single_exports: bool,
+    include_session_original_files: bool,
+    include_session_overlay_csv: bool,
+    include_session_summary: bool,
+    show_multi_peaks: bool,
+) -> str:
+    payload = {
+        "spectrum_names": sorted(spectra.keys()),
+        "selected_overlay_names": sorted(selected_overlay_names),
+        "processing_kwargs": processing_kwargs,
+        "x_shifts": st.session_state.x_shifts,
+        "intensity_scales": st.session_state.intensity_scales,
+        "stack_step": st.session_state.get("stack_step", 1.2),
+        "include_session_single_exports": include_session_single_exports,
+        "include_session_original_files": include_session_original_files,
+        "include_session_overlay_csv": include_session_overlay_csv,
+        "include_session_summary": include_session_summary,
+        "show_multi_peaks": show_multi_peaks,
+    }
+
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+def build_single_export_signature(
+    selected_spectrum_name: str,
+    processing_kwargs: dict,
+    show_peaks: bool,
+    include_csv: bool,
+    include_metadata: bool,
+    include_full_figure: bool,
+    include_original_file: bool,
+) -> str:
+    payload = {
+        "selected_spectrum_name": selected_spectrum_name,
+        "processing_kwargs": processing_kwargs,
+        "x_shift": st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
+        "intensity_scale": st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
+        "show_peaks": show_peaks,
+        "include_csv": include_csv,
+        "include_metadata": include_metadata,
+        "include_full_figure": include_full_figure,
+        "include_original_file": include_original_file,
+    }
+
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def build_multi_export_signature(
+    selected_overlay_names: list[str],
+    processing_kwargs: dict,
+    show_multi_peaks: bool,
+    include_overlay_html: bool,
+    include_normalized_html: bool,
+    include_stacked_html: bool,
+    include_overlay_csv: bool,
+) -> str:
+    payload = {
+        "selected_overlay_names": sorted(selected_overlay_names),
+        "processing_kwargs": processing_kwargs,
+        "x_shifts": st.session_state.x_shifts,
+        "intensity_scales": st.session_state.intensity_scales,
+        "stack_step": st.session_state.get("stack_step", 1.2),
+        "show_multi_peaks": show_multi_peaks,
+        "include_overlay_html": include_overlay_html,
+        "include_normalized_html": include_normalized_html,
+        "include_stacked_html": include_stacked_html,
+        "include_overlay_csv": include_overlay_csv,
+    }
+
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
 init_session_state()
 
 st.title("Raman Analysis")
@@ -450,10 +572,10 @@ with tabs[0]:
             0.0,
         )
         
-        result = process_spectrum(
+        result = run_processed(
             active_spectrum["x"],
             active_spectrum["y"],
-            **single_processing_kwargs,
+            single_processing_kwargs,
         )
         
         fig = create_single_view_figure(
@@ -545,14 +667,29 @@ with tabs[3]:
 with tabs[4]:
     st.markdown("### Export active spectrum")
 
-    include_csv = st.checkbox("Include processed (CSV)", value=True, key="single_include_csv")
+    include_csv = st.checkbox("Include processed data (CSV)", value=True, key="single_include_csv")
     include_metadata = st.checkbox("Include metadata (TXT)", value=True, key="single_include_metadata")
-    include_full_figure = st.checkbox("Include figure (HTML)", value=True, key="single_include_figure")
+    include_full_figure = st.checkbox("Include plot (HTML)", value=True, key="single_include_figure")
     include_original_file = st.checkbox(
         "Include original file (L6S / XML / TXT)",
         value=True,
         key="single_include_original",
     )
+
+    current_single_export_signature = build_single_export_signature(
+        selected_spectrum_name=selected_spectrum_name,
+        processing_kwargs=processing_kwargs,
+        show_peaks=show_peaks,
+        include_csv=include_csv,
+        include_metadata=include_metadata,
+        include_full_figure=include_full_figure,
+        include_original_file=include_original_file,
+    )
+
+    if st.session_state.single_export_signature != current_single_export_signature:
+        st.session_state.single_export_zip_bytes = None
+        st.session_state.single_export_zip_name = None
+        st.session_state.single_export_signature = current_single_export_signature
 
     if (
         st.session_state.single_export_zip_bytes is None
@@ -570,10 +707,10 @@ with tabs[4]:
                     0.0,
                 )
 
-                export_result = process_spectrum(
+                export_result = run_processed(
                     active_spectrum["x"],
                     active_spectrum["y"],
-                    **export_processing_kwargs,
+                    export_processing_kwargs,
                 )
 
                 filename_base = Path(active_spectrum.get("filename", "spectrum")).stem
@@ -616,6 +753,7 @@ with tabs[4]:
                 else:
                     st.session_state.single_export_zip_bytes = build_zip_bytes(files)
                     st.session_state.single_export_zip_name = f"{filename_base}_export.zip"
+                    st.session_state.single_export_signature = current_single_export_signature
                     st.success("Single spectrum export package created.")
                     st.rerun()
             except Exception as exc:
@@ -640,10 +778,25 @@ with tabs[4]:
     )
     include_stacked_html = st.checkbox("Include stacked plot (HTML)", value=True, key="multi_include_stacked_html")
     include_overlay_csv = st.checkbox(
-        "Include overlay CSV (shared shifted x-axis, visible smoothed spectra)",
+        "Include processed data (CSV)",
         value=True,
         key="multi_include_overlay_csv",
     )
+
+    current_multi_export_signature = build_multi_export_signature(
+        selected_overlay_names=selected_overlay_names,
+        processing_kwargs=processing_kwargs,
+        show_multi_peaks=show_multi_peaks,
+        include_overlay_html=include_overlay_html,
+        include_normalized_html=include_normalized_html,
+        include_stacked_html=include_stacked_html,
+        include_overlay_csv=include_overlay_csv,
+    )
+
+    if st.session_state.multi_export_signature != current_multi_export_signature:
+        st.session_state.multi_export_zip_bytes = None
+        st.session_state.multi_export_zip_name = None
+        st.session_state.multi_export_signature = current_multi_export_signature
 
     if (
         st.session_state.multi_export_zip_bytes is None
@@ -663,16 +816,17 @@ with tabs[4]:
                     files = {}
                     processed_results = {}
 
-                    for name, spectrum in selected_spectra.items():
-                        local_processing_kwargs = dict(processing_kwargs)
-                        local_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(name, 1.0)
-                        local_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(name, 0.0)
+                    if include_overlay_csv:
+                        for name, spectrum in selected_spectra.items():
+                            local_processing_kwargs = dict(processing_kwargs)
+                            local_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(name, 1.0)
+                            local_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(name, 0.0)
 
-                        processed_results[name] = process_spectrum(
-                            spectrum["x"],
-                            spectrum["y"],
-                            **local_processing_kwargs,
-                        )
+                            processed_results[name] = run_processed(
+                                spectrum["x"],
+                                spectrum["y"],
+                                local_processing_kwargs,
+                            )
 
                     if include_overlay_html:
                         overlay_fig = create_overlay_figure(
@@ -716,6 +870,7 @@ with tabs[4]:
                     else:
                         st.session_state.multi_export_zip_bytes = build_zip_bytes(files)
                         st.session_state.multi_export_zip_name = "multi_spectra_export.zip"
+                        st.session_state.multi_export_signature = current_multi_export_signature
                         st.success("Multi-spectra export package created.")
                         st.rerun()
             except Exception as exc:
@@ -732,16 +887,45 @@ with tabs[4]:
 
     st.markdown("### Export full session")
 
+    include_session_single_exports = st.checkbox(
+        "Include processed data and metadata (CSV / TXT)",
+        value=True,
+        key="session_include_single_exports",
+    )
+
     include_session_original_files = st.checkbox(
-        "Include original files in session export",
+        "Include original files (L6S / XML / TXT)",
         value=True,
         key="session_include_original_files",
     )
+
     include_session_overlay_csv = st.checkbox(
-        "Include overlay CSV in session export",
+        "Include overlay (CSV)",
         value=True,
         key="session_include_overlay_csv",
     )
+
+    include_session_summary = st.checkbox(
+        "Include summary (HTML)",
+        value=True,
+        key="session_include_summary",
+    )
+
+    current_session_export_signature = build_session_export_signature(
+        spectra=spectra,
+        selected_overlay_names=selected_overlay_names,
+        processing_kwargs=processing_kwargs,
+        include_session_single_exports=include_session_single_exports,
+        include_session_original_files=include_session_original_files,
+        include_session_overlay_csv=include_session_overlay_csv,
+        include_session_summary=include_session_summary,
+        show_multi_peaks=show_multi_peaks,
+    )
+
+    if st.session_state.session_export_signature != current_session_export_signature:
+        st.session_state.session_export_zip_bytes = None
+        st.session_state.session_export_zip_name = None
+        st.session_state.session_export_signature = current_session_export_signature
 
     if (
         st.session_state.session_export_zip_bytes is None
@@ -749,112 +933,130 @@ with tabs[4]:
     ):
         if st.button("Create session export package", key="create_session_export"):
             try:
-                files = {}
+                if not (
+                    include_session_single_exports
+                    or include_session_original_files
+                    or include_session_overlay_csv
+                    or include_session_summary
+                ):
+                    st.session_state.session_export_zip_bytes = None
+                    st.session_state.session_export_zip_name = None
+                    st.warning("Please select at least one export item.")
+                else:
+                    files = {}
 
-                single_results = {}
-                for name, spectrum in spectra.items():
-                    local_processing_kwargs = dict(processing_kwargs)
-                    local_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(name, 1.0)
-                    local_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(name, 0.0)
+                    single_results = {}
+                    for name, spectrum in spectra.items():
+                        local_processing_kwargs = dict(processing_kwargs)
+                        local_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(name, 1.0)
+                        local_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(name, 0.0)
 
-                    result = process_spectrum(
-                        spectrum["x"],
-                        spectrum["y"],
-                        **local_processing_kwargs,
-                    )
-                    single_results[name] = result
+                        result = run_processed(
+                            spectrum["x"],
+                            spectrum["y"],
+                            local_processing_kwargs,
+                        )
+                        single_results[name] = result
 
-                    filename_base = Path(spectrum.get("filename", name)).stem
+                        if include_session_single_exports:
+                            filename_base = Path(spectrum.get("filename", name)).stem
 
-                    files[f"{name}/{filename_base}_processed.csv"] = build_single_spectrum_csv_bytes(
-                        result,
-                        x_shift=st.session_state.x_shifts.get(name, 0.0),
-                        intensity_scale=st.session_state.intensity_scales.get(name, 1.0),
-                    )
+                            files[f"{name}/{filename_base}_processed.csv"] = build_single_spectrum_csv_bytes(
+                                result,
+                                x_shift=st.session_state.x_shifts.get(name, 0.0),
+                                intensity_scale=st.session_state.intensity_scales.get(name, 1.0),
+                            )
 
-                    files[f"{name}/{filename_base}_metadata.txt"] = build_spectrum_metadata_txt_bytes(
-                        spectrum,
-                        processing_kwargs=processing_kwargs,
-                        x_shift=st.session_state.x_shifts.get(name, 0.0),
-                        intensity_scale=st.session_state.intensity_scales.get(name, 1.0),
-                    )
+                            files[f"{name}/{filename_base}_metadata.txt"] = build_spectrum_metadata_txt_bytes(
+                                spectrum,
+                                processing_kwargs=processing_kwargs,
+                                x_shift=st.session_state.x_shifts.get(name, 0.0),
+                                intensity_scale=st.session_state.intensity_scales.get(name, 1.0),
+                            )
 
-                    if include_session_original_files:
-                        orig_bytes = spectrum.get("original_bytes")
-                        if orig_bytes:
-                            files[f"{name}/{spectrum['filename']}"] = orig_bytes
+                        if include_session_original_files:
+                            orig_bytes = spectrum.get("original_bytes")
+                            if orig_bytes:
+                                files[f"{name}/{spectrum['filename']}"] = orig_bytes
 
-                selected_spectra = {
-                    name: spectra[name]
-                    for name in selected_overlay_names
-                    if name in spectra
-                }
+                    selected_spectra = {
+                        name: spectra[name]
+                        for name in selected_overlay_names
+                        if name in spectra
+                    }
 
-                overlay_processed_results = {}
-                for name, spectrum in selected_spectra.items():
-                    local_processing_kwargs = dict(processing_kwargs)
-                    local_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(name, 1.0)
-                    local_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(name, 0.0)
+                    overlay_processed_results = {}
+                    if include_session_overlay_csv:
+                        for name, spectrum in selected_spectra.items():
+                            local_processing_kwargs = dict(processing_kwargs)
+                            local_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(name, 1.0)
+                            local_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(name, 0.0)
 
-                    overlay_processed_results[name] = process_spectrum(
-                        spectrum["x"],
-                        spectrum["y"],
-                        **local_processing_kwargs,
-                    )
+                            overlay_processed_results[name] = run_processed(
+                                spectrum["x"],
+                                spectrum["y"],
+                                local_processing_kwargs,
+                            )
 
-                overlay_fig = create_overlay_figure(
-                    selected_spectra,
-                    processing_kwargs=processing_kwargs,
-                    intensity_scales=st.session_state.intensity_scales,
-                    x_shifts=st.session_state.x_shifts,
-                    title="Overlay",
-                    show_peaks=show_multi_peaks,
-                )
+                    overlay_fig = None
+                    normalized_fig = None
+                    stacked_fig = None
 
-                normalized_fig = create_normalized_overlay_figure(
-                    selected_spectra,
-                    processing_kwargs=processing_kwargs,
-                    x_shifts=st.session_state.x_shifts,
-                    title="Normalized Overlay",
-                    show_peaks=show_multi_peaks,
-                )
+                    if include_session_summary:
+                        overlay_fig = create_overlay_figure(
+                            selected_spectra,
+                            processing_kwargs=processing_kwargs,
+                            intensity_scales=st.session_state.intensity_scales,
+                            x_shifts=st.session_state.x_shifts,
+                            title="Overlay",
+                            show_peaks=show_multi_peaks,
+                        )
 
-                stacked_fig = create_stacked_figure(
-                    selected_spectra,
-                    processing_kwargs=processing_kwargs,
-                    x_shifts=st.session_state.x_shifts,
-                    title="Stacked Spectra",
-                    show_peaks=show_multi_peaks,
-                    step=st.session_state.get("stack_step", 1.2),
-                )
+                        normalized_fig = create_normalized_overlay_figure(
+                            selected_spectra,
+                            processing_kwargs=processing_kwargs,
+                            x_shifts=st.session_state.x_shifts,
+                            title="Normalized Overlay",
+                            show_peaks=show_multi_peaks,
+                        )
 
-                overlay_csv_path = None
-                if include_session_overlay_csv and overlay_processed_results:
-                    overlay_csv_path = "overlay/overlay_processed.csv"
-                    files[overlay_csv_path] = build_multi_spectra_csv_bytes(
-                        overlay_processed_results
-                    )
+                        stacked_fig = create_stacked_figure(
+                            selected_spectra,
+                            processing_kwargs=processing_kwargs,
+                            x_shifts=st.session_state.x_shifts,
+                            title="Stacked Spectra",
+                            show_peaks=show_multi_peaks,
+                            step=st.session_state.get("stack_step", 1.2),
+                        )
 
-                summary_bytes = build_summary_html_bytes(
-                    spectra=spectra,
-                    single_results=single_results,
-                    overlay_names=list(selected_spectra.keys()),
-                    overlay_fig=overlay_fig,
-                    normalized_overlay_fig=normalized_fig,
-                    stacked_fig=stacked_fig,
-                    processing_kwargs=processing_kwargs,
-                    x_shifts=st.session_state.x_shifts,
-                    intensity_scales=st.session_state.intensity_scales,
-                    include_original_file_links=include_session_original_files,
-                    overlay_csv_path=overlay_csv_path,
-                )
+                    overlay_csv_path = None
+                    if include_session_overlay_csv and overlay_processed_results:
+                        overlay_csv_path = "overlay/overlay_processed.csv"
+                        files[overlay_csv_path] = build_multi_spectra_csv_bytes(
+                            overlay_processed_results
+                        )
 
-                files["summary.html"] = summary_bytes
+                    if include_session_summary:
+                        summary_bytes = build_summary_html_bytes(
+                            spectra=spectra,
+                            single_results=single_results,
+                            overlay_names=list(selected_spectra.keys()),
+                            overlay_fig=overlay_fig,
+                            normalized_overlay_fig=normalized_fig,
+                            stacked_fig=stacked_fig,
+                            processing_kwargs=processing_kwargs,
+                            x_shifts=st.session_state.x_shifts,
+                            intensity_scales=st.session_state.intensity_scales,
+                            include_original_file_links=include_session_original_files,
+                            overlay_csv_path=overlay_csv_path,
+                        )
+                        files["summary.html"] = summary_bytes
 
-                st.session_state.session_export_zip_bytes = build_zip_bytes(files)
-                st.session_state.session_export_zip_name = "session_export.zip"
-                st.success("Session export package created.")
-                st.rerun()
+                    st.session_state.session_export_zip_bytes = build_zip_bytes(files)
+                    st.session_state.session_export_zip_name = "session_export.zip"
+                    st.session_state.session_export_signature = current_session_export_signature
+                    st.success("Session export package created.")
+                    st.rerun()
             except Exception as exc:
                 st.error(f"Session export error: {exc}")
     else:
