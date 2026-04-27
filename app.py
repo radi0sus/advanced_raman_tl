@@ -17,6 +17,7 @@ from utils.figures import (
 
 from utils.export import (
     build_single_spectrum_csv_bytes,
+    build_multi_spectra_csv_bytes,
     build_spectrum_metadata_txt_bytes,
     build_figure_html_bytes,
     build_zip_bytes,
@@ -512,6 +513,7 @@ with tabs[3]:
                 max_value=2.0,
                 value=1.2,
                 step=0.001,
+                key="stack_step",
             )
 
             fig = create_stacked_figure(
@@ -597,6 +599,87 @@ with tabs[4]:
                 st.success("Export package created.")
         except Exception as exc:
             st.error(f"Export error: {exc}")
+            
+    st.markdown("### Export selected multi-spectra views")
+
+    include_overlay_html = st.checkbox("Include overlay plot (HTML)", value=True)
+    include_normalized_html = st.checkbox("Include normalized overlay plot (HTML)", value=True)
+    include_stacked_html = st.checkbox("Include stacked plot (HTML)", value=True)
+    include_overlay_csv = st.checkbox(
+        "Include overlay CSV (shared shifted x-axis, visible smoothed spectra)",
+        value=True,
+    )
+
+    if st.button("Create multi-spectra export package"):
+        try:
+            selected_spectra = {
+                name: spectra[name]
+                for name in selected_overlay_names
+                if name in spectra
+            }
+
+            if not selected_spectra:
+                st.warning("Please select at least one spectrum for multi export.")
+            else:
+                files = {}
+                processed_results = {}
+
+                for name, spectrum in selected_spectra.items():
+                    local_processing_kwargs = dict(processing_kwargs)
+                    local_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(name, 1.0)
+                    local_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(name, 0.0)
+
+                    processed_results[name] = process_spectrum(
+                        spectrum["x"],
+                        spectrum["y"],
+                        **local_processing_kwargs,
+                    )
+
+                if include_overlay_html:
+                    overlay_fig = create_overlay_figure(
+                        selected_spectra,
+                        processing_kwargs=processing_kwargs,
+                        intensity_scales=st.session_state.intensity_scales,
+                        x_shifts=st.session_state.x_shifts,
+                        title="Overlay",
+                        show_peaks=show_multi_peaks,
+                    )
+                    files["overlay/overlay_plot.html"] = build_figure_html_bytes(overlay_fig)
+
+                if include_normalized_html:
+                    normalized_fig = create_normalized_overlay_figure(
+                        selected_spectra,
+                        processing_kwargs=processing_kwargs,
+                        x_shifts=st.session_state.x_shifts,
+                        title="Normalized Overlay",
+                        show_peaks=show_multi_peaks,
+                    )
+                    files["overlay/normalized_overlay_plot.html"] = build_figure_html_bytes(normalized_fig)
+
+                if include_stacked_html:
+                    stacked_fig = create_stacked_figure(
+                        selected_spectra,
+                        processing_kwargs=processing_kwargs,
+                        x_shifts=st.session_state.x_shifts,
+                        title="Stacked Spectra",
+                        show_peaks=show_multi_peaks,
+                        step=st.session_state.get("stack_step", 1.2),
+                    )
+                    files["overlay/stacked_plot.html"] = build_figure_html_bytes(stacked_fig)
+
+                if include_overlay_csv:
+                    files["overlay/overlay_processed.csv"] = build_multi_spectra_csv_bytes(
+                        processed_results
+                    )
+
+                if not files:
+                    st.warning("Please select at least one multi export item.")
+                else:
+                    st.session_state.export_zip_bytes = build_zip_bytes(files)
+                    st.session_state.export_zip_name = "multi_spectra_export.zip"
+                    st.success("Multi-spectra export package created.")
+        except Exception as exc:
+            st.error(f"Multi export error: {exc}")
 
     if st.session_state.export_zip_bytes is not None and st.session_state.export_zip_name is not None:
         st.download_button(

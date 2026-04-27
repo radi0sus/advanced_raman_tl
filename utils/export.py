@@ -101,6 +101,53 @@ def build_spectrum_metadata_txt_bytes(
                 lines.append(f"{key}: {value}")
 
     return "\n".join(lines).encode("utf-8")
+
+def build_multi_spectra_csv_bytes(
+    processed_results: dict[str, dict],
+) -> bytes:
+    """
+    Build a CSV for multiple processed spectra with a shared x-axis.
+
+    Assumes:
+    - result["x"] already includes any applied x_shift
+    - result["smoothed"] already matches the visible plotted y values
+      (including intensity scaling if applied in process_spectrum)
+
+    Missing y values are filled with 0.0000.
+    All numeric values are written with 4 decimal places.
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Gemeinsame x-Achse = Vereinigung aller vorhandenen x-Werte
+    all_x = set()
+    for result in processed_results.values():
+        for xi in result["x"]:
+            all_x.add(round(float(xi), 10))
+
+    x_common = sorted(all_x)
+
+    # Header
+    header = ["x"] + [f"y_{name}" for name in processed_results.keys()]
+    writer.writerow(header)
+
+    # Mapping je Spektrum: x -> y
+    y_maps = {}
+    for name, result in processed_results.items():
+        y_maps[name] = {
+            round(float(xi), 10): float(yi)
+            for xi, yi in zip(result["x"], result["smoothed"])
+        }
+
+    # Datenzeilen
+    for xi in x_common:
+        row = [f"{xi:.4f}"]
+        for name in processed_results.keys():
+            yi = y_maps[name].get(xi, 0.0)
+            row.append(f"{yi:.4f}")
+        writer.writerow(row)
+
+    return output.getvalue().encode("utf-8")
     
 def build_figure_html_bytes(fig) -> bytes:
     return fig.to_html(full_html=True, include_plotlyjs=True).encode("utf-8")
