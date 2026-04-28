@@ -99,6 +99,7 @@ def _add_peak_annotations(
     legendgroup=None,
     trace_name="Peak",
     showlegend=False,
+    full_name=None, 
 ):
     peak_x = np.asarray(peaks.get("x", np.array([])), dtype=float)
     peak_y = np.asarray(peaks.get("y", np.array([])), dtype=float)
@@ -125,6 +126,11 @@ def _add_peak_annotations(
                 line=dict(color="white", width=1),
             ),
             name=trace_name,
+            customdata=[full_name] * len(peak_x) if full_name else None,
+            hovertemplate=(
+                f"x: %{{x:.1f}}<br>y: %{{y:.1f}}"
+                f"<extra><b>{full_name}</b></extra>"
+            ) if full_name else None,
             showlegend=showlegend,
             legendgroup=legendgroup,
         ),
@@ -301,8 +307,8 @@ def create_overlay_figure(
                 name=_shorten_name(name),
                 customdata=[name] * len(result["x"]),
                 hovertemplate=(
-                    f"<span style='color:{color}'><b>%{{customdata}}</b></span><br>"
-                    "x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
+                    "x: %{x:.1f}<br>y: %{y:.1f}"
+                    f"<extra><b>{name}</b></extra>"
                 ),
                 legendgroup=name,
                 line=dict(width=2, color=color),
@@ -315,6 +321,7 @@ def create_overlay_figure(
                 result["peaks"],
                 marker_color=color,
                 marker_size=6,
+                full_name=name,
                 legendgroup=name,
                 trace_name="Peak",
                 showlegend=False,
@@ -373,8 +380,8 @@ def create_normalized_overlay_figure(
                 name=_shorten_name(name),
                 customdata=[name] * len(result["x"]),
                 hovertemplate=(
-                    f"<span style='color:{color}'><b>%{{customdata}}</b></span><br>"
-                    "x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
+                    "x: %{x:.1f}<br>y: %{y:.1f}"
+                    f"<extra><b>{name}</b></extra>"
                 ),
                 legendgroup=name,
                 line=dict(width=2, color=color),
@@ -395,6 +402,7 @@ def create_normalized_overlay_figure(
                 peak_result_norm,
                 marker_color=color,
                 marker_size=6,
+                full_name=name,
                 legendgroup=name,
                 trace_name="Peak",
                 showlegend=False,
@@ -455,8 +463,8 @@ def create_stacked_figure(
                 name=_shorten_name(name),
                 customdata=[name] * len(result["x"]),
                 hovertemplate=(
-                    f"<span style='color:{color}'><b>%{{customdata}}</b></span><br>"
-                    "x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
+                    "x: %{x:.1f}<br>y: %{y:.1f}"
+                    f"<extra><b>{name}</b></extra>"
                 ),
                 legendgroup=name,
                 line=dict(width=2, color=color),
@@ -478,6 +486,7 @@ def create_stacked_figure(
                 peak_result_stacked,
                 marker_color=color,
                 marker_size=6,
+                full_name=name,
                 legendgroup=name,
                 trace_name="Peak",
                 showlegend=False,
