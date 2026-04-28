@@ -552,6 +552,20 @@ def build_summary_html_bytes(
           margin: 0 0.25rem;
         }}
         
+        #raman-navbar .nav-print-button {{
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          color: #0f172a;
+          border-radius: 6px;
+          padding: 0.35rem 0.7rem;
+          font-size: 0.9rem;
+          cursor: pointer;
+        }}
+        
+        #raman-navbar .nav-print-button:hover {{
+          background: #e2e8f0;
+        }}
+        
         #nav-overview,
         #nav-processing,
         #nav-spectra,
@@ -560,8 +574,58 @@ def build_summary_html_bytes(
         }}
 
         @media print {{
+          @page {{
+            size: auto;
+            margin: 12mm;
+          }}
+        
           #raman-navbar {{
-            display: none;
+            display: none !important;
+          }}
+        
+          body {{
+            margin: 0;
+            color: black;
+            background: white;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }}
+        
+          .summary-single-spectrum,
+          .summary-overlay-view,
+          .summary-overlay-info,
+          .settings-block,
+          .meta,
+          .plot {{
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }}
+        
+          .summary-single-spectrum,
+          .summary-overlay-view,
+          .summary-overlay-info {{
+            break-before: page;
+            page-break-before: always;
+          }}
+        
+          .summary-single-spectrum:first-of-type,
+          .summary-overlay-view:first-of-type,
+          .summary-overlay-info:first-of-type {{
+            break-before: auto;
+            page-break-before: auto;
+          }}
+        
+          .plot {{
+            height: 420px !important;
+          }}
+        
+          .links {{
+            display: none !important;
+          }}
+        
+          h1, h2, h3 {{
+            break-after: avoid;
+            page-break-after: avoid;
           }}
         }}
 
@@ -639,6 +703,7 @@ def build_summary_html_bytes(
         <a href="#nav-processing">Processing</a>
         <a href="#nav-spectra">Spectra</a>
         <a href="#nav-overlay">Overlays</a>
+         <button type="button" class="nav-print-button" onclick="window.print()">🖨 Print / PDF</button>
         <span class="nav-divider">|</span>
         <span class="nav-subtitle">Singles:</span>
         {''.join(spectrum_nav_links)}

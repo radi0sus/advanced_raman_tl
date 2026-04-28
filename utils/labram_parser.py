@@ -308,220 +308,239 @@ def _parse_txt(path: Path) -> RamanSpectrum:
 # L6S parser
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Binary IDs
+# Binary IDs / LabSpec6 settings-directory parser
+SETTINGS_PARENT = struct.pack("<I", 0x8716361)
 VALUE_ID = struct.pack("<I", 0x7D6C61DB)
-NAME_ID = struct.pack("<I", 0x6D6D616E)
 NUMERIC_ID = struct.pack("<I", 0x8736F70)
 UNI_ID = struct.pack("<I", 0x7C696E75)
 
 FMT_FLOAT64 = 0x05
 FMT_INT32 = 0x04
-FMT_STR = 0x07
+FMT_STR7 = 0x07
 
+DIR_ENTRY_SIZE = 24
+NUMERIC_OFFSET = 16
 _INT_TO_WN_GAP = 316
 
+PARAM_TABLE = [
+    (0x6F707865, "Acq. time (s)", False),
+    (0x7D6363CE, "Accumulations", False),
+    (0x6F6E61D7, "Range (cm-1)", False),
+    (0x6CE1E0E6, "Windows", False),
+    (0x3F415756, "Auto scanning", False),
+    (0xECD7E53A, "Autofocus", False),
+    (0x4C576339, "AutoExposure", False),
+    (0x4F350544, "Spike filter", False),
+    (0x696C65DD, "Delay time (s)", False),
+    (0x6ED5D7CB, "Binning", False),
+    (0xEA3A4A4E, "Readout mode", False),
+    (0x6FD3D8CD, "DeNoise", False),
+    (0xFC5AA4A0, "ICS correction", False),
+    (0x5AB3995F, "Dark correction", False),
+    (0x5A48F279, "Inst. Process", False),
+    (0x6EDE5114, "Detector temp", False),
+    (0xD9E15849, "Instrument", False),
+    (0xDFE3D9C7, "Detector", False),
+    (0xDBD3D737, "Objective", True),
+    (0x7CC8E0D0, "Grating", True),
+    (0x7C6CDBCB, "Filter", False),
+    (0x6D7361DE, "Laser (nm)", True),
+    (0x7C696C73, "Slit", True),
+    (0x6D6C6F68, "Hole", True),
+    (0xED344A4E, "Temperature", True),
+    (0x6FDAECD8, "StageXY", False),
+    (0x6F61EED8, "StageZ", False),
+    (0x8000078, "X (µm)", True),
+    (0x8000079, "Y (µm)", True),
+    (0x800007A, "Z (µm)", True),
+    (0xD9D9DEDA, "Full time", False),
+]
 
-def _find_all(data: bytes, needle: bytes) -> list[int]:
-    positions = []
-    pos = 0
-    while True:
-        idx = data.find(needle, pos)
-        if idx == -1:
-            break
-        positions.append(idx)
-        pos = idx + 1
-    return positions
+_PARAM_LOOKUP = {pid: (name, use_num) for pid, name, use_num in PARAM_TABLE}
 
 
-def _read_value_at(data: bytes, value_id_offset: int):
-    fmt_offset = value_id_offset - 8
-    if fmt_offset < 0 or value_id_offset + 16 > len(data):
-        return None, None
+def _read_pointer_string(
+    data: bytes,
+    node_id_offset: int,
+    length: int,
+    search_window: int = 300,
+) -> str | None:
+    def _try_read(pos: int) -> str | None:
+        raw = data[pos: pos + length].rstrip(b"\x00")
+        if not raw:
+            return None
+        s = raw.decode("latin-1", errors="replace")
+        return s if s.isprintable() else None
 
-    fmt = data[fmt_offset]
-    payload_offset = value_id_offset + 8
+    search_end = node_id_offset + search_window
+
+    uni_off = data.find(UNI_ID, node_id_offset, search_end)
+    if uni_off != -1:
+        pos = uni_off + 4
+        while pos < uni_off + 24 and pos < len(data) and data[pos] == 0:
+            pos += 1
+        label_end = data.find(b"\x00", pos)
+        if label_end != -1:
+            val = _try_read(label_end + 1)
+            if val:
+                return val
+
+    name_id = struct.pack("<I", 0x6D6D616E)
+    namm_off = data.find(name_id, node_id_offset, node_id_offset + 32)
+    if namm_off != -1:
+        pool_start = namm_off + 16
+        val = _try_read(pool_start)
+        if val:
+            return val
+
+    return None
+
+
+def _read_l6s_node(data: bytes, node_id_offset: int):
+    fmt_off = node_id_offset - 8
+    if fmt_off < 0 or node_id_offset + 16 > len(data):
+        return None
+
+    fmt = data[fmt_off]
+    pay_off = node_id_offset + 8
 
     if fmt == FMT_FLOAT64:
-        val = struct.unpack_from("<d", data, payload_offset)[0]
-        return val, FMT_FLOAT64
-    elif fmt == FMT_INT32:
-        val = struct.unpack_from("<i", data, payload_offset)[0]
-        return val, FMT_INT32
-    elif fmt == FMT_STR:
-        raw = data[payload_offset: payload_offset + 8]
+        return struct.unpack_from("<d", data, pay_off)[0]
+
+    if fmt == FMT_INT32:
+        return struct.unpack_from("<i", data, pay_off)[0]
+
+    if fmt == FMT_STR7:
+        raw = data[pay_off: pay_off + 8]
         s = raw.split(b"\x00")[0].decode("latin-1", errors="replace")
-        return s, FMT_STR
-    else:
-        return None, fmt
+        if s and s.isprintable():
+            return s
 
-
-def _find_preceding_value(
-    data: bytes,
-    label_offset: int,
-    expected_fmt: int,
-    max_lookback: int = 200,
-):
-    search_start = max(0, label_offset - max_lookback)
-    candidates = _find_all(data[search_start:label_offset], VALUE_ID)
-
-    for rel in reversed(candidates):
-        abs_pos = search_start + rel
-        val, fmt = _read_value_at(data, abs_pos)
-        if fmt == expected_fmt and val is not None:
-            return val
+        length = struct.unpack_from("<I", raw, 4)[0]
+        if 1 <= length <= 64:
+            return _read_pointer_string(data, node_id_offset, length)
 
     return None
 
 
-def _find_named_block(data: bytes, label_str: str) -> tuple[int, int] | tuple[None, None]:
-    label_bytes = label_str.encode("latin-1") + b"\x00"
+def _parse_l6s_metadata_raw(data: bytes) -> dict:
+    sp_off = data.find(SETTINGS_PARENT)
+    if sp_off == -1:
+        return {}
 
-    pos = 0
-    while True:
-        npos = data.find(NAME_ID, pos)
-        if npos == -1:
+    first_pid = struct.pack("<I", PARAM_TABLE[0][0])
+    dir_start = data.find(first_pid, sp_off, sp_off + 200)
+    if dir_start == -1:
+        return {}
+
+    dir_ids = [
+        struct.unpack_from("<I", data, dir_start + i * DIR_ENTRY_SIZE)[0]
+        for i in range(len(PARAM_TABLE))
+    ]
+
+    content_start = dir_start + len(PARAM_TABLE) * DIR_ENTRY_SIZE
+    content_end = min(content_start + 5000, len(data))
+
+    value_nodes = []
+    numeric_nodes = []
+
+    pos = content_start
+    while pos < content_end:
+        vp = data.find(VALUE_ID, pos, content_end)
+        if vp == -1:
             break
-        if data[npos + 8:npos + 8 + len(label_bytes)] == label_bytes:
-            data_start = npos + 8 + len(label_bytes)
-            uni_off = data.find(UNI_ID, data_start, data_start + 200)
-            block_end = uni_off if uni_off != -1 else data_start + 150
-            return data_start, block_end
-        pos = npos + 1
+        value_nodes.append(_read_l6s_node(data, vp))
+        pos = vp + 1
 
-    label_off = data.find(label_bytes)
-    if label_off == -1:
-        return None, None
-
-    uni_off = None
-    pos = max(0, label_off - 200)
-    while pos < label_off:
-        idx = data.find(UNI_ID, pos, label_off)
-        if idx == -1:
+    pos = content_start
+    while pos < content_end:
+        np = data.find(NUMERIC_ID, pos, content_end)
+        if np == -1:
             break
-        uni_off = idx
-        pos = idx + 1
-    if uni_off is None:
-        return None, None
+        numeric_nodes.append(_read_l6s_node(data, np))
+        pos = np + 1
 
-    namm_off = None
-    pos = max(0, uni_off - 300)
-    while pos < uni_off:
-        idx = data.find(NAME_ID, pos, uni_off)
-        if idx == -1:
-            break
-        namm_off = idx
-        pos = idx + 1
-    if namm_off is None:
-        return None, None
-
-    data_start = namm_off + 16
-    return data_start, uni_off
-
-
-def _block_float(data: bytes, label_str: str) -> float | None:
-    data_start, block_end = _find_named_block(data, label_str)
-    if data_start is None:
-        return None
-
-    for needle in (NUMERIC_ID, VALUE_ID):
-        pos = data_start
-        while pos < block_end:
-            idx = data.find(needle, pos, block_end)
-            if idx == -1:
-                break
-            val, fmt = _read_value_at(data, idx)
-            if fmt == FMT_FLOAT64:
-                return val
-            pos = idx + 1
-
-    return None
-
-
-def _block_str(data: bytes, label_str: str) -> str | None:
-    data_start, block_end = _find_named_block(data, label_str)
-    if data_start is None:
-        return None
-
-    pos = data_start
-    while pos < block_end:
-        idx = data.find(VALUE_ID, pos, block_end)
-        if idx == -1:
-            break
-        val, fmt = _read_value_at(data, idx)
-        if fmt == FMT_STR and val:
-            return val
-        pos = idx + 1
-
-    return None
-
-
-def _extract_l6s_metadata(data: bytes) -> dict:
-    text = data.decode("latin-1", errors="replace")
     meta = {}
+    for i, pid in enumerate(dir_ids):
+        if pid not in _PARAM_LOOKUP:
+            continue
 
-    acq_label_offset = data.find(b"Acq. time (s)\x00")
-    if acq_label_offset != -1:
-        val = _find_preceding_value(data, acq_label_offset, FMT_FLOAT64)
+        name, use_num = _PARAM_LOOKUP[pid]
+
+        if use_num and i >= NUMERIC_OFFSET:
+            ni = i - NUMERIC_OFFSET
+            val = numeric_nodes[ni] if ni < len(numeric_nodes) else None
+            if val is not None and isinstance(val, float) and abs(val) < 1e9:
+                meta[name] = val
+                continue
+
+        val = value_nodes[i] if i < len(value_nodes) else None
         if val is not None:
-            meta["Acq. time"] = _meta_entry(
-                int(val) if float(val).is_integer() else val,
-                "s",
-            )
+            meta[name] = val
 
-    acc_label_offset = data.find(b"Accumulations\x00")
-    if acc_label_offset != -1:
-        val = _find_preceding_value(data, acc_label_offset, FMT_INT32)
-        if val is not None:
-            meta["Accumulations"] = _meta_entry(val)
-
-    win_label_offset = data.find(b"Windows\x00")
-    if win_label_offset != -1:
-        val = _find_preceding_value(data, win_label_offset, FMT_INT32)
-        if val is not None:
-            meta["Windows"] = _meta_entry(val)
-
-    val = _block_float(data, "Laser (nm)")
-    if val is not None:
-        meta["Laser"] = _meta_entry(val, "nm")
-
-    val = _block_float(data, "Grating")
-    if val is not None:
-        meta["Grating"] = _meta_entry(
-            int(val) if float(val).is_integer() else val,
-            "g/mm",
-        )
-
-    val = _block_str(data, "Filter")
-    if val is not None:
-        meta["Filter"] = _meta_entry(val)
-
-    val = _block_float(data, "Slit")
-    if val is not None:
-        meta["Slit"] = _meta_entry(
-            int(val) if float(val).is_integer() else val,
-            "µm",
-        )
-
-    val = _block_float(data, "Hole")
-    if val is not None:
-        meta["Hole"] = _meta_entry(
-            int(val) if float(val).is_integer() else val,
-            "µm",
-        )
-
-    if b"LabRAM" in data:
-        meta["Instrument"] = _meta_entry("LabRAM")
-
-    if b"Andor CCD" in data:
-        meta["Detector"] = _meta_entry("Andor CCD")
-
+    text = data.decode("latin-1", errors="replace")
     m = re.search(r"\b\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}\b", text)
     if m:
-        meta["Acquired"] = _meta_entry(m.group(0))
+        meta["Acquired"] = m.group(0)
     else:
         m = re.search(r"\b\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\b", text)
         if m:
-            meta["Acquired"] = _meta_entry(m.group(0))
+            meta["Acquired"] = m.group(0)
+
+    return meta
+
+
+def _extract_l6s_metadata(data: bytes) -> dict:
+    raw = _parse_l6s_metadata_raw(data)
+    meta = {}
+
+    if "Laser (nm)" in raw:
+        val = raw["Laser (nm)"]
+        if isinstance(val, float) and val.is_integer():
+            val = int(val)
+        meta["Laser"] = _meta_entry(val, "nm")
+
+    if "Grating" in raw:
+        val = raw["Grating"]
+        if isinstance(val, float) and val.is_integer():
+            val = int(val)
+        meta["Grating"] = _meta_entry(val, "g/mm")
+
+    if "Filter" in raw:
+        meta["Filter"] = _meta_entry(raw["Filter"])
+
+    if "Acq. time (s)" in raw:
+        val = raw["Acq. time (s)"]
+        if isinstance(val, float) and val.is_integer():
+            val = int(val)
+        meta["Acq. time"] = _meta_entry(val, "s")
+
+    if "Accumulations" in raw:
+        meta["Accumulations"] = _meta_entry(raw["Accumulations"])
+
+    if "Windows" in raw:
+        meta["Windows"] = _meta_entry(raw["Windows"])
+
+    if "Slit" in raw:
+        val = raw["Slit"]
+        if isinstance(val, float) and val.is_integer():
+            val = int(val)
+        meta["Slit"] = _meta_entry(val, "µm")
+
+    if "Hole" in raw:
+        val = raw["Hole"]
+        if isinstance(val, float) and val.is_integer():
+            val = int(val)
+        meta["Hole"] = _meta_entry(val, "µm")
+
+    if "Instrument" in raw:
+        meta["Instrument"] = _meta_entry(raw["Instrument"])
+
+    if "Detector" in raw:
+        meta["Detector"] = _meta_entry(raw["Detector"])
+
+    if "Acquired" in raw:
+        meta["Acquired"] = _meta_entry(raw["Acquired"])
 
     return meta
 
