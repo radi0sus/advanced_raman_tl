@@ -328,6 +328,20 @@ def build_processing_kwargs():
     }
 
 
+def _meta_text(metadata: dict, key: str) -> str | None:
+    entry = metadata.get(key)
+    if not isinstance(entry, dict):
+        return None
+
+    value = entry.get("value")
+    unit = entry.get("unit", "")
+
+    if value in (None, ""):
+        return None
+
+    return f"{value} {unit}".strip()
+
+
 def show_metadata(spectrum: dict):
     metadata = spectrum.get("metadata", {})
     x = spectrum.get("x", [])
@@ -341,28 +355,33 @@ def show_metadata(spectrum: dict):
         lines.append(f"<b>Range:</b> {x[0]:.1f} – {x[-1]:.1f} cm⁻¹")
 
     key_map = {
-        "Laser Wavelength (nm)": "Laser",
-        "Acq. time (s)": "Acq. time",
-        "Accumulations": "Accum.",
+        "Laser": "Laser",
         "Grating": "Grating",
         "Filter": "Filter",
-        "Instrument Name": "Instrument",
-        "Detector Name": "Detector",
-        "Spectrum Name": "Name",
+        "Acq. time": "Acq. time",
+        "Accumulations": "Accum.",
+        "Windows": "Windows",
+        "Slit": "Slit",
+        "Hole": "Hole",
+        "Instrument": "Instrument",
+        "Detector": "Detector",
         "Acquired": "Acquired",
     }
 
     for key, label in key_map.items():
-        value = metadata.get(key)
-        if value not in (None, ""):
+        value = _meta_text(metadata, key)
+        if value:
             lines.append(f"<b>{label}:</b> {value}")
 
     st.markdown(
         f"<div style='font-size: 0.95rem; line-height: 1.5;'>{'<br>'.join(lines)}</div>",
         unsafe_allow_html=True,
     )
-    
-    st.markdown(f"<div style='font-size: 0.95rem; line-height: 1.5;'>&nbsp</div>",unsafe_allow_html=True,)
+
+    st.markdown(
+        "<div style='font-size: 0.95rem; line-height: 1.5;'>&nbsp</div>",
+        unsafe_allow_html=True,
+    )
 
 @st.cache_data(show_spinner=False)
 def cached_process_spectrum(x_tuple, y_tuple, kwargs_json):
@@ -640,7 +659,7 @@ processing_kwargs = build_processing_kwargs()
 active_spectrum = spectra.get(selected_spectrum_name)
 if active_spectrum is None:
     st.stop()
-    
+   
 with st.sidebar.expander("Spectrum Info", expanded=False):
     show_metadata(active_spectrum)
 

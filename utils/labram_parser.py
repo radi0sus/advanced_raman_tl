@@ -1,10 +1,18 @@
 """
-labram_parser.py
-================
+parser.py
+=========
 Raman spectrum parser for:
   .xml   — Horiba LabSpec LSX XML export
   .txt   — two-column text file: wavenumber <tab/space> intensity
-  .l6s   — LabSpec6 binary file (spectrum only, no metadata extraction)
+  .l6s   — LabSpec6 binary file
+
+Metadata are returned in structured form:
+
+    metadata = {
+        "Laser": {"value": 532.15, "unit": "nm"},
+        "Grating": {"value": 600, "unit": "g/mm"},
+        ...
+    }
 
 No external dependencies.
 """
@@ -17,6 +25,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data model
@@ -34,65 +43,85 @@ class RamanSpectrum:
 
     @property
     def spectrum_name(self) -> Optional[str]:
-        return self.metadata.get("Spectrum Name")
+        return _meta_value(self.metadata, "Name")
 
     @property
     def laser_nm(self) -> Optional[float]:
         try:
-            return float(self.metadata["Laser Wavelength (nm)"])
-        except (KeyError, ValueError, TypeError):
+            value = _meta_value(self.metadata, "Laser")
+            return float(value) if value is not None else None
+        except (ValueError, TypeError):
             return None
 
     @property
     def acq_time_s(self) -> Optional[float]:
         try:
-            return float(self.metadata["Acq. time (s)"])
-        except (KeyError, ValueError, TypeError):
+            value = _meta_value(self.metadata, "Acq. time")
+            return float(value) if value is not None else None
+        except (ValueError, TypeError):
             return None
 
     @property
     def accumulations(self) -> Optional[int]:
         try:
-            return int(self.metadata["Accumulations"])
-        except (KeyError, ValueError, TypeError):
+            value = _meta_value(self.metadata, "Accumulations")
+            return int(value) if value is not None else None
+        except (ValueError, TypeError):
             return None
-            
-    @property
-    def display_name(self) -> str:
-        try:
-            return self.metadata.get("Spectrum Name") or self.filename
-        except (KeyError, ValueError, TypeError):
-            return None
-            
 
     def __repr__(self) -> str:
         n = len(self.wavenumbers)
         rng = f"{self.wavenumbers[0]:.1f}–{self.wavenumbers[-1]:.1f} cm-1" if n else "?"
         blc = " [BLC]" if self.is_blc else ""
-    
+
         def meta(key: str, default: str = "?") -> str:
-            v = self.metadata.get(key)
-            return str(v) if v not in (None, "") else default
-    
+            return _meta_text(self.metadata, key, default)
+
         return (
             f"RamanSpectrum('{self.filename}'{blc}, "
             f"n={n}, "
             f"range={rng}, "
-            f"name={meta('Spectrum Name')}, "
-            f"laser={meta('Laser Wavelength (nm)')} nm, "
-            f"acq={meta('Acq. time (s)')} s x {meta('Accumulations')}, "
+            f"name={meta('Name')}, "
+            f"laser={meta('Laser')}, "
+            f"acq={meta('Acq. time')} x {meta('Accumulations')}, "
             f"grating={meta('Grating')}, "
             f"filter={meta('Filter')}, "
             f"slit={meta('Slit')}, "
             f"hole={meta('Hole')}, "
-            f"instrument={meta('Instrument Name')}, "
-            f"detector={meta('Detector Name')})"
+            f"instrument={meta('Instrument')}, "
+            f"detector={meta('Detector')})"
         )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers
+# Metadata helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _meta_entry(value, unit: str = "") -> dict:
+    return {"value": value, "unit": unit}
+
+
+def _meta_value(metadata: dict, key: str):
+    entry = metadata.get(key)
+    if not isinstance(entry, dict):
+        return None
+    return entry.get("value")
+
+
+def _meta_text(metadata: dict, key: str, default: str = "") -> str:
+    entry = metadata.get(key)
+    if not isinstance(entry, dict):
+        return default
+
+    value = entry.get("value")
+    unit = entry.get("unit", "")
+
+    if value in (None, ""):
+        return default
+
+    text = f"{value} {unit}".strip()
+    return text or default
+
 
 def _coerce(value: str) -> object:
     v = str(value).strip()
@@ -116,31 +145,6 @@ def _extract_number(value: str | None) -> Optional[float]:
     num = float(m.group(0))
     return int(num) if num.is_integer() else num
 
-
-def _normalize_metadata(meta: dict) -> dict:
-    out = {}
-
-    def pick(dst, *keys):
-        for k in keys:
-            if k in meta and meta[k] not in ("", None):
-                out[dst] = meta[k]
-                return
-
-    pick("Spectrum Name", "Spectrum Name", "Title", "Spectrum", "Name")
-    pick("Acq. time (s)", "Acq. time (s)", "Acq. time")
-    pick("Accumulations", "Accumulations")
-    pick("Spike filter", "Spike filter")
-    pick("Instrument Name", "Instrument Name", "Instrument")
-    pick("Detector Name", "Detector Name", "Detector")
-    pick("Grating", "Grating")
-    pick("Filter", "Filter")
-    pick("Laser Wavelength (nm)", "Laser Wavelength (nm)", "Laser (nm)", "Laser")
-    pick("Slit", "Slit")
-    pick("Hole", "Hole")
-    pick("Full time(mm:ss)", "Full time(mm:ss)", "Full time")
-    pick("Acquired", "Acquired", "Date")
-
-    return out
 
 # ─────────────────────────────────────────────────────────────────────────────
 # XML parser
@@ -207,25 +211,47 @@ def _parse_xml(path: Path) -> RamanSpectrum:
             continue
 
         if name == "Title":
-            metadata["Spectrum Name"] = display or ""
+            metadata["Name"] = _meta_entry(display or "")
         elif name == "Date":
-            metadata["Acquired"] = display or ""
+            metadata["Acquired"] = _meta_entry(display or "")
         elif name == "Laser (nm)":
-            metadata["Laser Wavelength (nm)"] = numeric if numeric is not None else _extract_number(display)
-        elif name in ("Acq. time (s)", "Accumulations", "Grating", "Slit", "Hole"):
-            metadata[name] = numeric if numeric is not None else _extract_number(display)
-        elif name == "Instrument":
-            metadata["Instrument Name"] = display or ""
-        elif name == "Detector":
-            metadata["Detector Name"] = display or ""
-        elif name == "Spike filter":
-            metadata["Spike filter"] = display or ""
+            val = numeric if numeric is not None else _extract_number(display)
+            if val is not None:
+                metadata["Laser"] = _meta_entry(val, "nm")
+        elif name == "Acq. time (s)":
+            val = numeric if numeric is not None else _extract_number(display)
+            if val is not None:
+                metadata["Acq. time"] = _meta_entry(val, "s")
+        elif name == "Accumulations":
+            val = numeric if numeric is not None else _extract_number(display)
+            if val is not None:
+                metadata["Accumulations"] = _meta_entry(val)
+        elif name == "Windows":
+            val = numeric if numeric is not None else _extract_number(display)
+            if val is not None:
+                metadata["Windows"] = _meta_entry(val)
+        elif name == "Grating":
+            val = numeric if numeric is not None else _extract_number(display)
+            if val is not None:
+                metadata["Grating"] = _meta_entry(val, "g/mm")
         elif name == "Filter":
-            metadata["Filter"] = display or ""
+            metadata["Filter"] = _meta_entry(display or "")
+        elif name == "Slit":
+            val = numeric if numeric is not None else _extract_number(display)
+            if val is not None:
+                metadata["Slit"] = _meta_entry(val, "µm")
+        elif name == "Hole":
+            val = numeric if numeric is not None else _extract_number(display)
+            if val is not None:
+                metadata["Hole"] = _meta_entry(val, "µm")
+        elif name == "Instrument":
+            metadata["Instrument"] = _meta_entry(display or "")
+        elif name == "Detector":
+            metadata["Detector"] = _meta_entry(display or "")
+        elif name == "Spike filter":
+            pass
         elif name == "Full time(mm:ss)":
-            metadata["Full time(mm:ss)"] = display or ""
-
-    metadata = _normalize_metadata(metadata)
+            pass
 
     return RamanSpectrum(
         filename=path.name,
@@ -279,96 +305,226 @@ def _parse_txt(path: Path) -> RamanSpectrum:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# L6S parser (spectrum and some metadata)
+# L6S parser
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Binary IDs
+VALUE_ID = struct.pack("<I", 0x7D6C61DB)
+NAME_ID = struct.pack("<I", 0x6D6D616E)
+NUMERIC_ID = struct.pack("<I", 0x8736F70)
+UNI_ID = struct.pack("<I", 0x7C696E75)
+
+FMT_FLOAT64 = 0x05
+FMT_INT32 = 0x04
+FMT_STR = 0x07
 
 _INT_TO_WN_GAP = 316
 
-def _extract_l6s_metadata_known_values(data: bytes) -> dict:
+
+def _find_all(data: bytes, needle: bytes) -> list[int]:
+    positions = []
+    pos = 0
+    while True:
+        idx = data.find(needle, pos)
+        if idx == -1:
+            break
+        positions.append(idx)
+        pos = idx + 1
+    return positions
+
+
+def _read_value_at(data: bytes, value_id_offset: int):
+    fmt_offset = value_id_offset - 8
+    if fmt_offset < 0 or value_id_offset + 16 > len(data):
+        return None, None
+
+    fmt = data[fmt_offset]
+    payload_offset = value_id_offset + 8
+
+    if fmt == FMT_FLOAT64:
+        val = struct.unpack_from("<d", data, payload_offset)[0]
+        return val, FMT_FLOAT64
+    elif fmt == FMT_INT32:
+        val = struct.unpack_from("<i", data, payload_offset)[0]
+        return val, FMT_INT32
+    elif fmt == FMT_STR:
+        raw = data[payload_offset: payload_offset + 8]
+        s = raw.split(b"\x00")[0].decode("latin-1", errors="replace")
+        return s, FMT_STR
+    else:
+        return None, fmt
+
+
+def _find_preceding_value(
+    data: bytes,
+    label_offset: int,
+    expected_fmt: int,
+    max_lookback: int = 200,
+):
+    search_start = max(0, label_offset - max_lookback)
+    candidates = _find_all(data[search_start:label_offset], VALUE_ID)
+
+    for rel in reversed(candidates):
+        abs_pos = search_start + rel
+        val, fmt = _read_value_at(data, abs_pos)
+        if fmt == expected_fmt and val is not None:
+            return val
+
+    return None
+
+
+def _find_named_block(data: bytes, label_str: str) -> tuple[int, int] | tuple[None, None]:
+    label_bytes = label_str.encode("latin-1") + b"\x00"
+
+    pos = 0
+    while True:
+        npos = data.find(NAME_ID, pos)
+        if npos == -1:
+            break
+        if data[npos + 8:npos + 8 + len(label_bytes)] == label_bytes:
+            data_start = npos + 8 + len(label_bytes)
+            uni_off = data.find(UNI_ID, data_start, data_start + 200)
+            block_end = uni_off if uni_off != -1 else data_start + 150
+            return data_start, block_end
+        pos = npos + 1
+
+    label_off = data.find(label_bytes)
+    if label_off == -1:
+        return None, None
+
+    uni_off = None
+    pos = max(0, label_off - 200)
+    while pos < label_off:
+        idx = data.find(UNI_ID, pos, label_off)
+        if idx == -1:
+            break
+        uni_off = idx
+        pos = idx + 1
+    if uni_off is None:
+        return None, None
+
+    namm_off = None
+    pos = max(0, uni_off - 300)
+    while pos < uni_off:
+        idx = data.find(NAME_ID, pos, uni_off)
+        if idx == -1:
+            break
+        namm_off = idx
+        pos = idx + 1
+    if namm_off is None:
+        return None, None
+
+    data_start = namm_off + 16
+    return data_start, uni_off
+
+
+def _block_float(data: bytes, label_str: str) -> float | None:
+    data_start, block_end = _find_named_block(data, label_str)
+    if data_start is None:
+        return None
+
+    for needle in (NUMERIC_ID, VALUE_ID):
+        pos = data_start
+        while pos < block_end:
+            idx = data.find(needle, pos, block_end)
+            if idx == -1:
+                break
+            val, fmt = _read_value_at(data, idx)
+            if fmt == FMT_FLOAT64:
+                return val
+            pos = idx + 1
+
+    return None
+
+
+def _block_str(data: bytes, label_str: str) -> str | None:
+    data_start, block_end = _find_named_block(data, label_str)
+    if data_start is None:
+        return None
+
+    pos = data_start
+    while pos < block_end:
+        idx = data.find(VALUE_ID, pos, block_end)
+        if idx == -1:
+            break
+        val, fmt = _read_value_at(data, idx)
+        if fmt == FMT_STR and val:
+            return val
+        pos = idx + 1
+
+    return None
+
+
+def _extract_l6s_metadata(data: bytes) -> dict:
     text = data.decode("latin-1", errors="replace")
     meta = {}
 
-    KNOWN = {
-        "Instrument Name": ["LabRAM"],
-        "Detector Name": ["Andor CCD"],
-        "Grating": ["600", "1800"],
-        "Filter": ["0.1%", "1%", "10%", "25%", "50%", "100%"],
-        "Laser Wavelength (nm)": ["457", "457.0", "532", "532.0", "532.15", "633", "632.81"],
-        "Full time(mm:ss)": [],
-    }
+    acq_label_offset = data.find(b"Acq. time (s)\x00")
+    if acq_label_offset != -1:
+        val = _find_preceding_value(data, acq_label_offset, FMT_FLOAT64)
+        if val is not None:
+            meta["Acq. time"] = _meta_entry(
+                int(val) if float(val).is_integer() else val,
+                "s",
+            )
 
-    def first_match(patterns):
-        for p in patterns:
-            if p in text:
-                return p
-        return None
+    acc_label_offset = data.find(b"Accumulations\x00")
+    if acc_label_offset != -1:
+        val = _find_preceding_value(data, acc_label_offset, FMT_INT32)
+        if val is not None:
+            meta["Accumulations"] = _meta_entry(val)
 
-    # direct strings
-    inst = first_match(KNOWN["Instrument Name"])
-    if inst:
-        meta["Instrument"] = inst
+    win_label_offset = data.find(b"Windows\x00")
+    if win_label_offset != -1:
+        val = _find_preceding_value(data, win_label_offset, FMT_INT32)
+        if val is not None:
+            meta["Windows"] = _meta_entry(val)
 
-    det = first_match(KNOWN["Detector Name"])
-    if det:
-        meta["Detector Name"] = det
+    val = _block_float(data, "Laser (nm)")
+    if val is not None:
+        meta["Laser"] = _meta_entry(val, "nm")
 
-    # context-based text search
-    def find_near(label: str, candidates: list[str], window: int = 180) -> Optional[str]:
-        idx = text.find(label)
-        if idx == -1:
-            return None
-        block = text[max(0, idx - 80): idx + window]
-        for c in candidates:
-            if c in block:
-                return c
-        return None
+    val = _block_float(data, "Grating")
+    if val is not None:
+        meta["Grating"] = _meta_entry(
+            int(val) if float(val).is_integer() else val,
+            "g/mm",
+        )
 
-    g = find_near("Grating", KNOWN["Grating"])
-    if g:
-        meta["Grating"] = int(float(g))
+    val = _block_str(data, "Filter")
+    if val is not None:
+        meta["Filter"] = _meta_entry(val)
 
-    f = find_near("Filter", KNOWN["Filter"])
-    if f:
-        meta["Filter"] = f
+    val = _block_float(data, "Slit")
+    if val is not None:
+        meta["Slit"] = _meta_entry(
+            int(val) if float(val).is_integer() else val,
+            "µm",
+        )
 
-    # Laser: first try exact context
-    l = find_near("Laser", KNOWN["Laser Wavelength (nm)"], window=220)
-    if l:
-        meta["Laser Wavelength (nm)"] = float(l)
-    else:
-        # fallback: accept only known laser values anywhere
-        for cand in KNOWN["Laser Wavelength (nm)"]:
-            if cand in text:
-                try:
-                    val = float(cand)
-                except ValueError:
-                    continue
-                # prefer non-integer more specific values if present
-                if val in (457.0, 532.15, 632.81, 633.0, 532.0):
-                    meta["Laser Wavelength (nm)"] = val
-                    break
+    val = _block_float(data, "Hole")
+    if val is not None:
+        meta["Hole"] = _meta_entry(
+            int(val) if float(val).is_integer() else val,
+            "µm",
+        )
 
-    # Full time
-    m = re.search(r"\b\d{1,2}:\d{2}\b", text)
-    if m:
-        meta["Full time(mm:ss)"] = m.group(0)
+    if b"LabRAM" in data:
+        meta["Instrument"] = _meta_entry("LabRAM")
 
-    # Acquired
+    if b"Andor CCD" in data:
+        meta["Detector"] = _meta_entry("Andor CCD")
+
     m = re.search(r"\b\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}\b", text)
     if m:
-        meta["Acquired"] = m.group(0)
+        meta["Acquired"] = _meta_entry(m.group(0))
     else:
         m = re.search(r"\b\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\b", text)
         if m:
-            meta["Acquired"] = m.group(0)
+            meta["Acquired"] = _meta_entry(m.group(0))
 
-    # Spectrum name: use a conservative pattern
-    m = re.search(r"\b[A-Z]_\d{2,}\b", text)
-    if m:
-        meta["Spectrum Name"] = m.group(0)
+    return meta
 
-    return _normalize_metadata(meta)
-    
 
 def _find_mean_tags(data: bytes) -> list[int]:
     positions = []
@@ -434,9 +590,9 @@ def _parse_l6s(path: Path) -> RamanSpectrum:
             i2_start = i2_end - n * 4
             if i2_start >= 0:
                 intensities_raw = _read_float32_block(data, i2_start, n)
-                
-    metadata = _extract_l6s_metadata_known_values(data)
-    
+
+    metadata = _extract_l6s_metadata(data)
+
     return RamanSpectrum(
         filename=path.name,
         is_blc=is_blc,
@@ -466,60 +622,3 @@ def load(path: str | Path) -> RamanSpectrum:
         return _parse_l6s(path)
 
     raise ValueError(f"Unsupported file format: {sfx!r} (expected .xml, .txt or .l6s)")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import sys
-
-    wanted = [
-        "Spectrum Name",
-        "Acq. time (s)",
-        "Accumulations",
-        "Spike filter",
-        "Instrument Name",
-        "Detector Name",
-        "Grating",
-        "Filter",
-        "Laser Wavelength (nm)",
-        "Slit",
-        "Hole",
-        "Full time(mm:ss)",
-        "Acquired",
-    ]
-
-    if len(sys.argv) < 2:
-        print("Usage: python labram_parser.py <file1> [file2 ...]")
-        raise SystemExit(1)
-
-    for arg in sys.argv[1:]:
-        sp = load(arg)
-
-        print("=" * 72)
-        print(sp)
-        for key in wanted:
-            print(f"{key}: {sp.metadata.get(key, '')}")
-            
-        try:
-            wn, it = sp.wavenumbers, sp.intensities
-            print(f"  WN  : {wn[0]:.3f} ... {wn[-1]:.3f}  (N={len(wn)})")
-            print(f"  INT : min={min(it):.2f}  max={max(it):.2f}")
-            if sp.intensities_raw is not None:
-                ir = sp.intensities_raw
-                print(f"  RAW : min={min(ir):.2f}  max={max(ir):.2f}")
-            if sp.metadata:
-                print("  Metadaten:")
-                for k, v in sorted(sp.metadata.items()):
-                    if not k.startswith('_') and v is not None:
-                        print(f"    {k:35s}: {v}")
-            if sp.history:
-                last = sp.history[-1]
-                print(f"  Historie: {len(sp.history)} Einträge  "
-                      f"(zuletzt: {last['action']} {last['timestamp']})")
-        except Exception as exc:
-            import traceback
-            print(f"  FEHLER: {exc}")
-            traceback.print_exc()

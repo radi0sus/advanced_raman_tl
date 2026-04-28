@@ -11,6 +11,20 @@ from datetime import datetime
 def make_safe_html_title(text: str) -> str:
     return str(text).replace("<", "").replace(">", "")
 
+def meta_text(metadata: dict, key: str, default: str = "") -> str:
+    entry = metadata.get(key)
+    if not isinstance(entry, dict):
+        return default
+
+    value = entry.get("value")
+    unit = entry.get("unit", "")
+
+    if value in (None, ""):
+        return default
+
+    text = f"{value} {unit}".strip()
+    return text or default
+
 def build_single_spectrum_csv_bytes(
     result: dict,
     x_shift: float = 0.0,
@@ -102,9 +116,25 @@ def build_spectrum_metadata_txt_bytes(
     if metadata:
         lines.append("")
         lines.append("Spectrum metadata")
-        for key, value in metadata.items():
-            if value not in (None, ""):
-                lines.append(f"{key}: {value}")
+
+        key_order = [
+            "Laser",
+            "Grating",
+            "Filter",
+            "Acq. time",
+            "Accumulations",
+            "Windows",
+            "Slit",
+            "Hole",
+            "Instrument",
+            "Detector",
+            "Acquired",
+        ]
+
+        for key in key_order:
+            text = meta_text(metadata, key)
+            if text:
+                lines.append(f"{key}: {text}")
 
     return "\n".join(lines).encode("utf-8")
 
@@ -224,27 +254,29 @@ def build_summary_html_bytes(
             items.append(("Original range", f"{float(x[0]):.4f} – {float(x[-1]):.4f} cm⁻¹"))
 
         key_map = {
-            "Laser Wavelength (nm)": "Laser",
-            "Acq. time (s)": "Acq. time",
+            "Laser": "Laser",
+            "Acq. time": "Acq. time",
             "Accumulations": "Accumulations",
+            "Windows": "Windows",
             "Grating": "Grating",
             "Filter": "Filter",
-            "Instrument Name": "Instrument",
-            "Detector Name": "Detector",
-            "Spectrum Name": "Name",
+            "Slit": "Slit",
+            "Hole": "Hole",
+            "Instrument": "Instrument",
+            "Detector": "Detector",
             "Acquired": "Acquired",
         }
 
         for key, label in key_map.items():
-            value = metadata.get(key)
-            if value not in (None, ""):
+            value = meta_text(metadata, key)
+            if value:
                 items.append((label, value))
 
         return "".join(
             f"<tr><th>{html.escape(str(k))}</th><td>{html.escape(str(v))}</td></tr>"
             for k, v in items
         )
-
+        
     def processing_to_html() -> str:
         sections = []
 
