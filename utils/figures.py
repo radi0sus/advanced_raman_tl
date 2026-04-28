@@ -1,6 +1,7 @@
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import re
 
 from utils.processing import process_spectrum
 
@@ -15,6 +16,16 @@ PLOT_COLORS = [
     "#ec4899",  # pink
     "#84cc16",  # lime
 ]
+
+def _shorten_name(name, max_len=12):
+    match = re.search(r'_\d+p', name)
+    if match:
+        short = name[:match.start()] + "…"
+    elif len(name) > max_len:
+        short = name[:max_len] + "…"
+    else:
+        short = name  # wirklich kurzer Name, kein …
+    return short
 
 def _axis_style(fig):
     fig.update_xaxes(
@@ -287,7 +298,12 @@ def create_overlay_figure(
                 x=result["x"],
                 y=result["smoothed"],
                 mode="lines",
-                name=name,
+                name=_shorten_name(name),
+                customdata=[name] * len(result["x"]),
+                hovertemplate=(
+                    f"<span style='color:{color}'><b>%{{customdata}}</b></span><br>"
+                    "x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
+                ),
                 legendgroup=name,
                 line=dict(width=2, color=color),
             )
@@ -354,7 +370,12 @@ def create_normalized_overlay_figure(
                 x=result["x"],
                 y=y_norm,
                 mode="lines",
-                name=name,
+                name=_shorten_name(name),
+                customdata=[name] * len(result["x"]),
+                hovertemplate=(
+                    f"<span style='color:{color}'><b>%{{customdata}}</b></span><br>"
+                    "x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
+                ),
                 legendgroup=name,
                 line=dict(width=2, color=color),
             )
@@ -431,7 +452,12 @@ def create_stacked_figure(
                 x=result["x"],
                 y=y_stack,
                 mode="lines",
-                name=name,
+                name=_shorten_name(name),
+                customdata=[name] * len(result["x"]),
+                hovertemplate=(
+                    f"<span style='color:{color}'><b>%{{customdata}}</b></span><br>"
+                    "x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
+                ),
                 legendgroup=name,
                 line=dict(width=2, color=color),
             )
