@@ -314,12 +314,18 @@ VALUE_ID = struct.pack("<I", 0x7D6C61DB)
 NUMERIC_ID = struct.pack("<I", 0x8736F70)
 UNI_ID = struct.pack("<I", 0x7C696E75)
 
+IDENTITY_BLOCK_ID = struct.pack("<I", 0x7C73E2D2)
+HISTORY_BLOCK_ID = struct.pack("<I", 0x7CECDBD7)
+NAMM_ID = struct.pack("<I", 0x6D6D616E)
+VALUE_ID_BYTES = VALUE_ID
+
 FMT_FLOAT64 = 0x05
 FMT_INT32 = 0x04
 FMT_STR7 = 0x07
 
 DIR_ENTRY_SIZE = 24
 NUMERIC_OFFSET = 16
+_NODE_SIZE = 24
 _INT_TO_WN_GAP = 316
 
 PARAM_TABLE = [
@@ -358,6 +364,15 @@ PARAM_TABLE = [
 
 _PARAM_LOOKUP = {pid: (name, use_num) for pid, name, use_num in PARAM_TABLE}
 
+_IDENTITY_CHILDREN = [
+    (0x6AE3D5D5, "Project"),
+    (0x786DC6DF, "Sample"),
+    (0x6D746973, "Site"),
+    (0x6C7469D9, "Title"),
+    (0x696DD0E4, "Remark"),
+    (0x6D746164, "Date"),
+]
+
 
 def _read_pointer_string(
     data: bytes,
@@ -385,8 +400,7 @@ def _read_pointer_string(
             if val:
                 return val
 
-    name_id = struct.pack("<I", 0x6D6D616E)
-    namm_off = data.find(name_id, node_id_offset, node_id_offset + 32)
+    namm_off = data.find(NAMM_ID, node_id_offset, min(node_id_offset + 32, len(data)))
     if namm_off != -1:
         pool_start = namm_off + 16
         val = _try_read(pool_start)
@@ -490,8 +504,168 @@ def _parse_l6s_metadata_raw(data: bytes) -> dict:
     return meta
 
 
+def _read_str_node(data: bytes, node_id_off: int) -> str | None:
+    fmt_off = node_id_off - 8
+    if fmt_off < 0 or node_id_off + 16 > len(data):
+        return None
+
+    fmt = data[fmt_off]
+    sub = data[fmt_off + 1]
+    payload_off = node_id_off + 8
+
+    if sub == 0x00:
+        raw = data[payload_off: payload_off + 8]
+        s = raw.split(b"\x00")[0].decode("latin-1", errors="replace")
+        return s if s else None
+
+    if sub == 0x10:
+        if fmt == 0x07:
+            length = struct.unpack_from("<I", data, payload_off + 4)[0]
+            str_off = payload_off + 8
+            if 1 <= length <= 256 and str_off + length <= len(data):
+                raw = data[str_off: str_off + length]
+                s = raw.split(b"\x00")[0].decode("latin-1", errors="replace")
+                return s if s.isprintable() else None
+        return None
+
+    return None
+
+
+def _parse_identity_block(data: bytes) -> dict:
+    id_off = data.find(IDENTITY_BLOCK_ID)
+    if id_off == -1:
+        return {}
+
+    first_child_id = struct.pack("<I", _IDENTITY_CHILDREN[0][0])
+    first_child_at = data.find(first_child_id, id_off, id_off + 4000)
+    if first_child_at == -1:
+        return {}
+
+    child_dir_start = first_child_at - 8
+    content_start = child_dir_start + len(_IDENTITY_CHILDREN) * _NODE_SIZE
+
+    result = {}
+    scan_pos = content_start
+
+    for _, field_name in _IDENTITY_CHILDREN:
+        namm_pos = data.find(NAMM_ID, scan_pos, min(scan_pos + 64, len(data)))
+        if namm_pos == -1:
+            break
+
+        val_pos = data.find(VALUE_ID_BYTES, namm_pos + 4, min(namm_pos + 64, len(data)))
+        if val_pos == -1:
+            scan_pos = namm_pos + _NODE_SIZE
+            continue
+
+        val = _read_str_node(data, val_pos)
+        if val is not None:
+            result[field_name] = val
+
+        val_fmt = data[val_pos - 8]
+        val_sub = data[val_pos - 7]
+        payload_off = val_pos + 8
+        if val_sub == 0x10 and val_fmt == 0x07:
+            length = struct.unpack_from("<I", data, payload_off + 4)[0]
+            scan_pos = payload_off + 8 + max(length, 1)
+        else:
+            scan_pos = payload_off + 8
+
+    return result
+
+
+def _identity_content_end(data: bytes) -> int:
+    id_off = data.find(IDENTITY_BLOCK_ID)
+    if id_off == -1:
+        return 0
+
+    first_child_id = struct.pack("<I", _IDENTITY_CHILDREN[0][0])
+    first_child_at = data.find(first_child_id, id_off, id_off + 4000)
+    if first_child_at == -1:
+        return 0
+
+    content_start = (first_child_at - 8) + len(_IDENTITY_CHILDREN) * _NODE_SIZE
+    scan_pos = content_start
+
+    for _ in _IDENTITY_CHILDREN:
+        namm_pos = data.find(NAMM_ID, scan_pos, min(scan_pos + 64, len(data)))
+        if namm_pos == -1:
+            break
+
+        val_pos = data.find(VALUE_ID_BYTES, namm_pos + 4, min(namm_pos + 64, len(data)))
+        if val_pos == -1:
+            scan_pos = namm_pos + _NODE_SIZE
+            continue
+
+        val_fmt = data[val_pos - 8]
+        val_sub = data[val_pos - 7]
+        payload_off = val_pos + 8
+        if val_sub == 0x10 and val_fmt == 0x07:
+            length = struct.unpack_from("<I", data, payload_off + 4)[0]
+            scan_pos = payload_off + 8 + max(length, 1)
+        else:
+            scan_pos = payload_off + 8
+
+    return scan_pos
+
+
+def _parse_l6s_history(data: bytes) -> list[dict]:
+    hist_off = data.find(HISTORY_BLOCK_ID)
+    if hist_off == -1:
+        return []
+
+    child_count = struct.unpack_from("<I", data, hist_off + 12)[0]
+    if not (1 <= child_count <= 200):
+        return []
+
+    ident_end = _identity_content_end(data)
+    if ident_end <= 0:
+        return []
+
+    entries = []
+    entry_content_start = ident_end + child_count * _NODE_SIZE
+
+    for seq_id in range(child_count):
+        sn1_start = entry_content_start
+        namm_id_off = sn1_start + 8
+        val_id_off = sn1_start + _NODE_SIZE + 8
+        pool_start = sn1_start + 3 * _NODE_SIZE
+
+        if pool_start > len(data):
+            break
+        if data[namm_id_off:namm_id_off + 4] != NAMM_ID:
+            break
+        if data[val_id_off:val_id_off + 4] != VALUE_ID_BYTES:
+            break
+
+        name_len = struct.unpack_from("<I", data, namm_id_off + 12)[0]
+        val_len = struct.unpack_from("<I", data, val_id_off + 12)[0]
+
+        if (
+            1 <= name_len <= 64
+            and 0 <= val_len <= 256
+            and pool_start + name_len + val_len <= len(data)
+        ):
+            name = (
+                data[pool_start:pool_start + name_len]
+                .split(b"\x00")[0]
+                .decode("latin-1", errors="replace")
+            )
+            value = (
+                data[pool_start + name_len:pool_start + name_len + val_len]
+                .split(b"\x00")[0]
+                .decode("latin-1", errors="replace")
+            )
+            if name.isprintable():
+                entries.append({"action": name, "timestamp": value})
+
+        entry_content_start += 3 * _NODE_SIZE + name_len + val_len
+
+    return entries
+
+
 def _extract_l6s_metadata(data: bytes) -> dict:
     raw = _parse_l6s_metadata_raw(data)
+    identity = _parse_identity_block(data)
     meta = {}
 
     if "Laser (nm)" in raw:
@@ -541,6 +715,12 @@ def _extract_l6s_metadata(data: bytes) -> dict:
 
     if "Acquired" in raw:
         meta["Acquired"] = _meta_entry(raw["Acquired"])
+
+    if identity.get("Title"):
+        meta["Name"] = _meta_entry(identity["Title"])
+
+    if "Acquired" not in meta and identity.get("Date"):
+        meta["Acquired"] = _meta_entry(identity["Date"])
 
     return meta
 
@@ -611,6 +791,7 @@ def _parse_l6s(path: Path) -> RamanSpectrum:
                 intensities_raw = _read_float32_block(data, i2_start, n)
 
     metadata = _extract_l6s_metadata(data)
+    history = _parse_l6s_history(data)
 
     return RamanSpectrum(
         filename=path.name,
@@ -619,9 +800,8 @@ def _parse_l6s(path: Path) -> RamanSpectrum:
         intensities=intensities,
         intensities_raw=intensities_raw,
         metadata=metadata,
-        history=[],
+        history=history,
     )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
