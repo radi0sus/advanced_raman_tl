@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import streamlit as st
+import matplotlib.pyplot as plt
 
 from utils.labram_parser import load
 from utils.processing import process_spectrum
@@ -16,6 +17,8 @@ from utils.figures import (
     create_stacked_figure,
 )
 
+from utils.mpl_figures import create_single_summary_mpl_figure
+
 from utils.export import (
     build_single_spectrum_csv_bytes,
     build_multi_spectra_csv_bytes,
@@ -23,6 +26,7 @@ from utils.export import (
     build_figure_html_bytes,
     build_summary_html_bytes,
     build_zip_bytes,
+    build_matplotlib_png_bytes,
 )
 
 try:
@@ -775,7 +779,7 @@ with tabs[4]:
 
     include_csv = st.checkbox("Include processed data (CSV)", value=True, key="single_include_csv")
     include_metadata = st.checkbox("Include metadata (TXT)", value=True, key="single_include_metadata")
-    include_full_figure = st.checkbox("Include plot (HTML)", value=True, key="single_include_figure")
+    include_full_figure = st.checkbox("Include plot (HTML / PNG)", value=True, key="single_include_figure")
     include_original_file = st.checkbox(
         "Include original file (L6S / XML / TXT)",
         value=True,
@@ -848,6 +852,22 @@ with tabs[4]:
                         show_smoothed=True,
                     )
                     files[f"{filename_base}_figure_full.html"] = build_figure_html_bytes(full_fig)
+                
+                    mpl_fig = create_single_summary_mpl_figure(
+                        spectrum=active_spectrum,
+                        result=export_result,
+                        processing_kwargs=processing_kwargs,
+                        x_shift=st.session_state.x_shifts.get(selected_spectrum_name, 0.0),
+                        intensity_scale=st.session_state.intensity_scales.get(selected_spectrum_name, 1.0),
+                        show_peaks=show_peaks,
+                        title=make_spectrum_title(active_spectrum),
+                        show_raw=True,
+                        show_baseline=True,
+                        show_corrected=True,
+                        show_smoothed=True,
+                    )
+                    files[f"{filename_base}_figure_full.png"] = build_matplotlib_png_bytes(mpl_fig)
+                    plt.close(mpl_fig)
 
                 if include_original_file:
                     orig_bytes = st.session_state.original_bytes_cache.get(active_spectrum["filename"])

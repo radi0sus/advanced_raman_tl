@@ -7,6 +7,18 @@ import json
 import html
 from datetime import datetime
 #import plotly.graph_objects as go
+from io import BytesIO
+
+def build_matplotlib_png_bytes(fig, dpi=150):
+    buf = BytesIO()
+    fig.savefig(
+        buf,
+        format="png",
+        dpi=dpi,
+        bbox_inches="tight",
+    )
+    buf.seek(0)
+    return buf.getvalue()
 
 def make_safe_html_title(text: str) -> str:
     return str(text).replace("<", "").replace(">", "")
