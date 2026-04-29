@@ -17,7 +17,12 @@ from utils.figures import (
     create_stacked_figure,
 )
 
-from utils.mpl_figures import create_single_summary_mpl_figure
+from utils.mpl_figures import (
+    create_single_summary_mpl_figure,
+    create_overlay_mpl_figure,
+    create_normalized_overlay_mpl_figure,
+    create_stacked_mpl_figure,
+)
 
 from utils.export import (
     build_single_spectrum_csv_bytes,
@@ -27,6 +32,7 @@ from utils.export import (
     build_summary_html_bytes,
     build_zip_bytes,
     build_matplotlib_png_bytes,
+    build_matplotlib_pdf_bytes,
 )
 
 try:
@@ -896,13 +902,14 @@ with tabs[4]:
 
     st.markdown("### Export selected multi-spectra views")
 
-    include_overlay_html = st.checkbox("Include overlay plot (HTML)", value=True, key="multi_include_overlay_html")
+    include_overlay_html = st.checkbox("Include overlay plot (HTML / PNG)", value=True, key="multi_include_overlay_html")
     include_normalized_html = st.checkbox(
-        "Include normalized overlay plot (HTML)",
+        "Include normalized overlay plot (HTML / PNG)",
         value=True,
         key="multi_include_normalized_html",
     )
-    include_stacked_html = st.checkbox("Include stacked plot (HTML)", value=True, key="multi_include_stacked_html")
+    include_stacked_html = st.checkbox("Include stacked plot (HTML / PNG)", value=True, key="multi_include_stacked_html")
+    
     include_overlay_csv = st.checkbox(
         "Include processed data (CSV)",
         value=True,
@@ -968,6 +975,17 @@ with tabs[4]:
                             show_multi_peaks,
                         )
                         files["overlay/overlay_plot.html"] = build_figure_html_bytes(overlay_fig)
+                    
+                        overlay_mpl_fig = create_overlay_mpl_figure(
+                            selected_spectra,
+                            processing_kwargs=processing_kwargs,
+                            intensity_scales=st.session_state.intensity_scales,
+                            x_shifts=st.session_state.x_shifts,
+                            title="Overlay",
+                            show_peaks=show_multi_peaks,
+                        )
+                        files["overlay/overlay_plot.png"] = build_matplotlib_png_bytes(overlay_mpl_fig)
+                        plt.close(overlay_mpl_fig)
 
                     if include_normalized_html:
                         normalized_fig = cached_normalized_overlay_figure(
@@ -978,6 +996,16 @@ with tabs[4]:
                             show_multi_peaks,
                         )
                         files["overlay/normalized_overlay_plot.html"] = build_figure_html_bytes(normalized_fig)
+                    
+                        normalized_mpl_fig = create_normalized_overlay_mpl_figure(
+                            selected_spectra,
+                            processing_kwargs=processing_kwargs,
+                            x_shifts=st.session_state.x_shifts,
+                            title="Normalized Overlay",
+                            show_peaks=show_multi_peaks,
+                        )
+                        files["overlay/normalized_overlay_plot.png"] = build_matplotlib_png_bytes(normalized_mpl_fig)
+                        plt.close(normalized_mpl_fig)
 
                     if include_stacked_html:
                         stacked_fig = cached_stacked_figure(
@@ -989,6 +1017,17 @@ with tabs[4]:
                             st.session_state.get("stack_step", 1.2),
                         )
                         files["overlay/stacked_plot.html"] = build_figure_html_bytes(stacked_fig)
+                    
+                        stacked_mpl_fig = create_stacked_mpl_figure(
+                            selected_spectra,
+                            processing_kwargs=processing_kwargs,
+                            x_shifts=st.session_state.x_shifts,
+                            title="Stacked Spectra",
+                            show_peaks=show_multi_peaks,
+                            step=st.session_state.get("stack_step", 1.2),
+                        )
+                        files["overlay/stacked_plot.png"] = build_matplotlib_png_bytes(stacked_mpl_fig)
+                        plt.close(stacked_mpl_fig)
 
                     if include_overlay_csv:
                         files["overlay/overlay_processed.csv"] = build_multi_spectra_csv_bytes(
@@ -1036,7 +1075,7 @@ with tabs[4]:
     )
 
     include_session_summary = st.checkbox(
-        "Include summary (HTML)",
+        "Include summary (HTML / PDF)",
         value=True,
         key="session_include_summary",
     )
@@ -1186,6 +1225,61 @@ with tabs[4]:
                             overlay_csv_path=overlay_csv_path,
                         )
                         files["summary.html"] = summary_bytes
+                    
+                        pdf_figures = []
+                    
+                        for name, spectrum in spectra.items():
+                            result = single_results[name]
+                    
+                            single_summary_fig = create_single_summary_mpl_figure(
+                                spectrum=spectrum,
+                                result=result,
+                                processing_kwargs=processing_kwargs,
+                                x_shift=st.session_state.x_shifts.get(name, 0.0),
+                                intensity_scale=st.session_state.intensity_scales.get(name, 1.0),
+                                show_peaks=show_peaks,
+                                title=make_spectrum_title(spectrum),
+                                show_raw=True,
+                                show_baseline=True,
+                                show_corrected=True,
+                                show_smoothed=True,
+                            )
+                            pdf_figures.append(single_summary_fig)
+                    
+                        if selected_spectra:
+                            overlay_pdf_fig = create_overlay_mpl_figure(
+                                selected_spectra,
+                                processing_kwargs=processing_kwargs,
+                                intensity_scales=st.session_state.intensity_scales,
+                                x_shifts=st.session_state.x_shifts,
+                                title="Overlay",
+                                show_peaks=show_multi_peaks,
+                            )
+                            pdf_figures.append(overlay_pdf_fig)
+                    
+                            normalized_pdf_fig = create_normalized_overlay_mpl_figure(
+                                selected_spectra,
+                                processing_kwargs=processing_kwargs,
+                                x_shifts=st.session_state.x_shifts,
+                                title="Normalized Overlay",
+                                show_peaks=show_multi_peaks,
+                            )
+                            pdf_figures.append(normalized_pdf_fig)
+                    
+                            stacked_pdf_fig = create_stacked_mpl_figure(
+                                selected_spectra,
+                                processing_kwargs=processing_kwargs,
+                                x_shifts=st.session_state.x_shifts,
+                                title="Stacked Spectra",
+                                show_peaks=show_multi_peaks,
+                                step=st.session_state.get("stack_step", 1.2),
+                            )
+                            pdf_figures.append(stacked_pdf_fig)
+                    
+                        files["summary.pdf"] = build_matplotlib_pdf_bytes(pdf_figures)
+                    
+                        for fig in pdf_figures:
+                            plt.close(fig)
 
                     st.session_state.session_export_zip_bytes = build_zip_bytes(files)
                     st.session_state.session_export_zip_name = "session_export.zip"

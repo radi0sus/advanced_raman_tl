@@ -8,6 +8,7 @@ import html
 from datetime import datetime
 #import plotly.graph_objects as go
 from io import BytesIO
+from matplotlib.backends.backend_pdf import PdfPages
 
 def build_matplotlib_png_bytes(fig, dpi=150):
     buf = BytesIO()
@@ -17,6 +18,16 @@ def build_matplotlib_png_bytes(fig, dpi=150):
         dpi=dpi,
         bbox_inches="tight",
     )
+    buf.seek(0)
+    return buf.getvalue()
+
+def build_matplotlib_pdf_bytes(figures):
+    buf = BytesIO()
+
+    with PdfPages(buf) as pdf:
+        for fig in figures:
+            pdf.savefig(fig)
+
     buf.seek(0)
     return buf.getvalue()
 
@@ -513,6 +524,15 @@ def build_summary_html_bytes(
       {plot}
     </div>
     """.replace("{plot}", plot_divs[-1]))
+    
+    body_parts.append(f"""
+    <div style="margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; font-size: 0.9rem; color: #64748b;">
+      Generated with Advanced Raman Tool ·
+      <a href="https://github.com/radi0sus/advanced_raman_tl" target="_blank">
+       https://github.com/radi0sus/advanced_raman_tl
+      </a>
+    </div>
+    """)
 
     html_doc = f"""
     <!DOCTYPE html>

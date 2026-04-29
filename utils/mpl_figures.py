@@ -52,10 +52,12 @@ def _apply_axis_style(ax):
         linestyle="-",
     )
 
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_color("#9ca3af")
-        spine.set_linewidth(0.9)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color("#6b7280")
+    ax.spines["bottom"].set_color("#6b7280")
+    ax.spines["left"].set_linewidth(0.9)
+    ax.spines["bottom"].set_linewidth(0.9)
 
     ax.tick_params(
         axis="both",
@@ -67,7 +69,6 @@ def _apply_axis_style(ax):
     )
 
     return ax
-
 
 def _expand_limits(x, pad_fraction: float = 0.005):
     x = np.asarray(x, dtype=float)
@@ -256,6 +257,15 @@ def _annotate_peaks(
             color=color,
         )
 
+def _add_footer(fig):
+    fig.text(
+        0.99, 0.012,
+        "Generated with Advanced Raman Tool · https://github.com/radi0sus/advanced_raman_tl",
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        color="#94a3b8",
+    )
 
 def create_single_summary_mpl_figure(
     spectrum: dict,
@@ -282,11 +292,11 @@ def create_single_summary_mpl_figure(
     smoothed = np.asarray(result["smoothed"], dtype=float)
     peaks = result.get("peaks", {})
 
-    fig = plt.figure(figsize=(16, 8.5))
+    fig = plt.figure(figsize=(11.69, 8.27))
     gs = GridSpec(
         2, 2,
         figure=fig,
-        width_ratios=[3.8, 1.45],
+        width_ratios=[3.4, 1.35],
         height_ratios=[1.0, 1.0],
         wspace=0.16,
         hspace=0.20,
@@ -299,25 +309,25 @@ def create_single_summary_mpl_figure(
 
     # obere Achse
     if show_raw:
-        ax_top.plot(x, raw, color="#2563eb", linewidth=1.8, alpha=0.95, label="Raw")
+        ax_top.plot(x, raw, color="#2563eb", linewidth=1.5, alpha=0.95, label="Raw")
 
     if show_baseline:
         ax_top.plot(
             x,
             baseline,
             color="#ef4444",
-            linewidth=1.6,
+            linewidth=1.5,
             linestyle="--",
             alpha=0.9,
             label="Baseline",
         )
 
     if show_corrected:
-       ax_top.plot(x, corrected, color="#0f172a", linewidth=1.9, label="Corrected")
+       ax_top.plot(x, corrected, color="#0f172a", linewidth=1.5, label="Corrected")
 
     # untere Achse
     if show_smoothed:
-        ax_bottom.plot(x, smoothed, color="#10b981", linewidth=2.2, label="Smoothed")
+        ax_bottom.plot(x, smoothed, color="#10b981", linewidth=1.5, label="Smoothed")
 
     if show_peaks and show_smoothed:
         peak_x = np.asarray(peaks.get("x", []), dtype=float)
@@ -345,8 +355,8 @@ def create_single_summary_mpl_figure(
         color="#0f172a",
     )
 
-    ax_top.set_ylabel(y_label_top, fontsize=11)
-    ax_bottom.set_ylabel(y_label_bottom, fontsize=11)
+    ax_top.set_ylabel(y_label_top, fontsize=11, labelpad=6)
+    ax_bottom.set_ylabel(y_label_bottom, fontsize=11, labelpad=6)
     ax_bottom.set_xlabel(x_label, fontsize=11)
 
     for ax in (ax_top, ax_bottom):
@@ -370,7 +380,8 @@ def create_single_summary_mpl_figure(
     _draw_text_block(ax_proc, "Processing", processing_lines)
 
     fig.suptitle(title, x=0.5, y=0.97, ha="center", fontsize=15, color="#0f172a")
-    fig.subplots_adjust(top=0.90, left=0.06, right=0.97, bottom=0.08)
+    fig.subplots_adjust(top=0.90, left=0.09, right=0.97, bottom=0.08)
+    _add_footer(fig)
     return fig
 
 def create_overlay_mpl_figure(
@@ -387,7 +398,7 @@ def create_overlay_mpl_figure(
     intensity_scales = intensity_scales or {}
     x_shifts = x_shifts or {}
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(11.69, 8.27))
     all_x = []
 
     for i, (name, spectrum) in enumerate(spectra_dict.items()):
@@ -410,9 +421,9 @@ def create_overlay_mpl_figure(
         ax.plot(
             x,
             y,
-            linewidth=2,
+            linewidth=1.5,
             color=color,
-            label=_shorten_name(name),
+            label=name,
         )
 
         if show_peaks and len(result["peaks"]["x"]) > 0:
@@ -432,17 +443,23 @@ def create_overlay_mpl_figure(
     _apply_axis_style(ax)
     ax.legend(
         loc="upper left",
-        bbox_to_anchor=(0.0, -0.13),
-        ncol=4,
-        fontsize=10,
+        bbox_to_anchor=(0.0, -0.10),
+        ncol=2,
+        fontsize=8.5,
         frameon=False,
+        handlelength=1.8,
+        handletextpad=0.5,
+        labelspacing=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.2,
     )
 
     xlim = _expand_limits(all_x)
     if xlim is not None:
         ax.set_xlim(*xlim)
 
-    fig.subplots_adjust(top=0.93, left=0.08, right=0.98, bottom=0.16)
+    fig.subplots_adjust(top=0.90, left=0.08, right=0.97, bottom=0.22)
+    _add_footer(fig)
     return fig
 
 
@@ -458,7 +475,7 @@ def create_normalized_overlay_mpl_figure(
     processing_kwargs = processing_kwargs or {}
     x_shifts = x_shifts or {}
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(11.69, 8.27))
     all_x = []
 
     for i, (name, spectrum) in enumerate(spectra_dict.items()):
@@ -483,9 +500,9 @@ def create_normalized_overlay_mpl_figure(
         ax.plot(
             x,
             y_norm,
-            linewidth=2,
+            linewidth=1.5,
             color=color,
-            label=_shorten_name(name),
+            label=name,
         )
 
         if show_peaks and len(result["peaks"]["x"]) > 0:
@@ -509,17 +526,23 @@ def create_normalized_overlay_mpl_figure(
     _apply_axis_style(ax)
     ax.legend(
         loc="upper left",
-        bbox_to_anchor=(0.0, -0.13),
-        ncol=4,
-        fontsize=10,
+        bbox_to_anchor=(0.0, -0.10),
+        ncol=2,
+        fontsize=8.5,
         frameon=False,
+        handlelength=1.8,
+        handletextpad=0.5,
+        labelspacing=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.2,
     )
 
     xlim = _expand_limits(all_x)
     if xlim is not None:
         ax.set_xlim(*xlim)
 
-    fig.subplots_adjust(top=0.93, left=0.08, right=0.98, bottom=0.16)
+    fig.subplots_adjust(top=0.90, left=0.08, right=0.97, bottom=0.22)
+    _add_footer(fig)
     return fig
 
 
@@ -536,7 +559,7 @@ def create_stacked_mpl_figure(
     processing_kwargs = processing_kwargs or {}
     x_shifts = x_shifts or {}
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(11.69, 8.27))
     all_x = []
 
     for i, (name, spectrum) in enumerate(spectra_dict.items()):
@@ -562,9 +585,9 @@ def create_stacked_mpl_figure(
         ax.plot(
             x,
             y_stack,
-            linewidth=2,
+            linewidth=1.5,
             color=color,
-            label=_shorten_name(name),
+            label=name,
         )
 
         if show_peaks and len(result["peaks"]["x"]) > 0:
@@ -589,15 +612,84 @@ def create_stacked_mpl_figure(
     _apply_axis_style(ax)
     ax.legend(
         loc="upper left",
-        bbox_to_anchor=(0.0, -0.13),
-        ncol=4,
-        fontsize=10,
+        bbox_to_anchor=(0.0, -0.10),
+        ncol=2,
+        fontsize=8.5,
         frameon=False,
+        handlelength=1.8,
+        handletextpad=0.5,
+        labelspacing=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.2,
     )
 
     xlim = _expand_limits(all_x)
     if xlim is not None:
         ax.set_xlim(*xlim)
 
-    fig.subplots_adjust(top=0.93, left=0.08, right=0.98, bottom=0.16)
+    fig.subplots_adjust(top=0.90, left=0.08, right=0.97, bottom=0.22)
+    _add_footer(fig)
+    return fig
+
+def create_session_overview_mpl_figure(
+    spectra: dict,
+    selected_overlay_names: list[str],
+    export_time: str,
+):
+    fig = plt.figure(figsize=(11.69, 8.27))  # A4 quer
+    ax = fig.add_subplot(111)
+
+    ax.set_axis_off()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+
+    fig.suptitle(
+        "Session Overview",
+        x=0.5,
+        y=0.97,
+        ha="center",
+        fontsize=16,
+        color="#0f172a",
+    )
+
+    session_lines = [
+        ("Export time", export_time),
+        ("Loaded spectra", str(len(spectra))),
+        ("Overlay spectra", str(len(selected_overlay_names))),
+        ("Overlay selection", ", ".join(selected_overlay_names) if selected_overlay_names else "—"),
+    ]
+
+    ax.text(
+        0.06, 0.90,
+        "Session overview",
+        ha="left",
+        va="top",
+        fontsize=12,
+        fontweight="bold",
+        color="#64748b",
+    )
+
+    y = 0.82
+    for label, value in session_lines:
+        ax.text(
+            0.06, y,
+            label,
+            ha="left",
+            va="top",
+            fontsize=11,
+            color="#0f172a",
+            fontweight="bold",
+        )
+        ax.text(
+            0.28, y,
+            value,
+            ha="left",
+            va="top",
+            fontsize=11,
+            color="#334155",
+            wrap=True,
+        )
+        y -= 0.11
+
+    fig.subplots_adjust(top=0.90, left=0.04, right=0.96, bottom=0.08)
     return fig
