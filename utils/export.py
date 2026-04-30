@@ -102,12 +102,16 @@ def build_spectrum_metadata_txt_bytes(
     if filename:
         lines.append(f"Filename: {filename}")
 
-    if x:
-        lines.append(f"Points: {len(x)}")
-        lines.append(f"Original range: {float(x[0]):.4f} - {float(x[-1]):.4f} cm^-1")
+    #if x:
+    #    lines.append(f"Points: {len(x)}")
+    #    lines.append(f"Original range: {float(x[0]):.1f} - {float(x[-1]):.1f} cm⁻¹")
 
     lines.append("")
     lines.append("Processing")
+    xmin = processing_kwargs.get("xmin")
+    xmax = processing_kwargs.get("xmax")
+    if xmin is not None and xmax is not None:
+        lines.append(f"wn range: {float(xmin):.1f} – {float(xmax):.1f} cm⁻¹")
     lines.append(f"x_shift: {float(x_shift):.4f}")
     lines.append(f"intensity_scale: {float(intensity_scale):.4f}")
 
@@ -139,6 +143,10 @@ def build_spectrum_metadata_txt_bytes(
     if metadata:
         lines.append("")
         lines.append("Spectrum metadata")
+        
+    if x:
+        lines.append(f"Points: {len(x)}")
+        lines.append(f"Range: {float(x[0]):.1f} - {float(x[-1]):.1f} cm⁻¹")        
 
         key_order = [
             "Laser",
@@ -274,7 +282,7 @@ def build_summary_html_bytes(
 
         if x:
             items.append(("Points", len(x)))
-            items.append(("Original range", f"{float(x[0]):.4f} – {float(x[-1]):.4f} cm⁻¹"))
+            items.append(("Range", f"{float(x[0]):.1f} – {float(x[-1]):.1f} cm⁻¹"))
 
         key_map = {
             "Laser": "Laser",
