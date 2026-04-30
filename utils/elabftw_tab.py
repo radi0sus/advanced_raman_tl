@@ -9,10 +9,13 @@ from typing import Any
 import requests
 import streamlit as st
 
-from utils.package_creation import build_single_export_artifacts
+from utils.package_creation import (
+    build_single_export_artifacts,
+    build_multi_export_artifacts,
+)
 
 
-RECENT_EXPERIMENTS_LIMIT = 100
+RECENT_EXPERIMENTS_LIMIT = 50
 
 
 # -----------------------------
@@ -36,6 +39,11 @@ def init_elabftw_session_state():
         "elabftw_single_upload_png_bytes": None,
         "elabftw_single_upload_png_name": None,
         "elabftw_single_upload_signature": None,
+        "elabftw_multi_upload_zip_bytes": None,
+        "elabftw_multi_upload_zip_name": None,
+        "elabftw_multi_upload_png_bytes": None,
+        "elabftw_multi_upload_png_name": None,
+        "elabftw_multi_upload_signature": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -228,6 +236,12 @@ def _reset_elabftw_single_upload_package():
     st.session_state.elabftw_single_upload_png_name = None
     st.session_state.elabftw_single_upload_signature = None
 
+def _reset_elabftw_multi_upload_package():
+    st.session_state.elabftw_multi_upload_zip_bytes = None
+    st.session_state.elabftw_multi_upload_zip_name = None
+    st.session_state.elabftw_multi_upload_png_bytes = None
+    st.session_state.elabftw_multi_upload_png_name = None
+    st.session_state.elabftw_multi_upload_signature = None
 
 def _load_recent_experiments_into_session():
     conn = make_connection(
@@ -264,10 +278,34 @@ def build_elabftw_single_upload_signature(
         json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()
 
+def build_elabftw_multi_upload_signature(
+    selected_overlay_names: list[str],
+    processing_kwargs: dict,
+    show_multi_peaks: bool,
+    stack_step: float,
+) -> str:
+    payload = {
+        "selected_overlay_names": sorted(selected_overlay_names),
+        "processing_kwargs": processing_kwargs,
+        "x_shifts": st.session_state.x_shifts,
+        "intensity_scales": st.session_state.intensity_scales,
+        "show_multi_peaks": show_multi_peaks,
+        "stack_step": stack_step,
+        "include_overlay_html": True,
+        "include_normalized_html": True,
+        "include_stacked_html": True,
+        "include_overlay_csv": True,
+        "direct_png_for_upload": "stacked_plot.png",
+    }
+
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
 
 # -----------------------------
-# UI
+# UI 
 # -----------------------------
+# Single
 
 def render_elabftw_single_upload_section():
     init_elabftw_session_state()
@@ -319,6 +357,7 @@ def render_elabftw_single_upload_section():
                     _load_recent_experiments_into_session()
                     _reset_selected_experiment()
                     _reset_elabftw_single_upload_package()
+                    _reset_elabftw_multi_upload_package()
                     st.success(msg)
                 except Exception as exc:
                     st.session_state.elabftw_recent_experiments = []
@@ -343,6 +382,7 @@ def render_elabftw_single_upload_section():
             _load_recent_experiments_into_session()
             _reset_selected_experiment()
             _reset_elabftw_single_upload_package()
+            _reset_elabftw_multi_upload_package()
         except Exception as exc:
             st.error(f"Failed to reload experiments: {exc}")
 
@@ -378,6 +418,7 @@ def render_elabftw_single_upload_section():
 
         if st.session_state.elabftw_selected_experiment_id != new_selected_id:
             _reset_elabftw_single_upload_package()
+            _reset_elabftw_multi_upload_package()
 
         st.session_state.elabftw_selected_experiment_id = new_selected_id
         st.session_state.elabftw_selected_experiment_label = selected_label
@@ -497,3 +538,135 @@ def render_elabftw_single_upload_section():
 
             except Exception as exc:
                 st.error(f"Upload failed: {exc}")
+                
+    # -----------------------------
+    # UI 
+    # -----------------------------
+    # Overlays
+    st.markdown("#### Upload overlay export")
+
+    selected_overlay_names = st.session_state.get("selected_overlay_names", [])
+    show_multi_peaks = bool(st.session_state.get("multi_show_peaks", True))
+    stack_step = float(st.session_state.get("stack_step", 1.2))
+
+    selected_spectra = {
+        name: spectra[name]
+        for name in selected_overlay_names
+        if name in spectra
+    }
+
+    if not selected_spectra:
+        st.warning("No overlay spectra selected.")
+        return
+
+    #st.write(f"Selected overlay spectra: {', '.join(selected_spectra.keys())}")
+
+    current_multi_upload_signature = build_elabftw_multi_upload_signature(
+        selected_overlay_names=list(selected_spectra.keys()),
+        processing_kwargs=processing_kwargs,
+        show_multi_peaks=show_multi_peaks,
+        stack_step=stack_step,
+    )
+
+    if st.session_state.elabftw_multi_upload_signature != current_multi_upload_signature:
+        _reset_elabftw_multi_upload_package()
+        st.session_state.elabftw_multi_upload_signature = current_multi_upload_signature
+
+    if (
+        st.session_state.elabftw_multi_upload_zip_bytes is None
+        or st.session_state.elabftw_multi_upload_zip_name is None
+    ):
+        if st.button("Create overlay upload package", key="create_elabftw_multi_upload_package"):
+            try:
+                artifacts = build_multi_export_artifacts(
+                    selected_spectra=selected_spectra,
+                    processing_kwargs=processing_kwargs,
+                    intensity_scales=st.session_state.intensity_scales,
+                    x_shifts=st.session_state.x_shifts,
+                    stack_step=stack_step,
+                    show_multi_peaks=show_multi_peaks,
+                    include_overlay_html=True,
+                    include_normalized_html=True,
+                    include_stacked_html=True,
+                    include_overlay_csv=True,
+                )
+
+                if not artifacts.files:
+                    st.error("Failed to create overlay export artifacts.")
+                    return
+
+                st.session_state.elabftw_multi_upload_zip_bytes = artifacts.build_zip_bytes()
+                st.session_state.elabftw_multi_upload_zip_name = artifacts.zip_name
+                st.session_state.elabftw_multi_upload_png_name = next(
+                    (
+                        name.split("/")[-1]
+                        for name in artifacts.files.keys()
+                        if name.lower().endswith("stacked_plot.png")
+                    ),
+                    None,
+                )
+                st.session_state.elabftw_multi_upload_png_bytes = next(
+                    (
+                        content
+                        for name, content in artifacts.files.items()
+                        if name.lower().endswith("stacked_plot.png")
+                    ),
+                    None,
+                )
+                st.session_state.elabftw_multi_upload_signature = current_multi_upload_signature
+
+                st.success("Overlay upload package created.")
+                st.rerun()
+
+            except Exception as exc:
+                st.error(f"Overlay package creation failed: {exc}")
+    else:
+        st.success("Overlay upload package ready.")
+        st.write(f"ZIP package: `{st.session_state.elabftw_multi_upload_zip_name}`")
+
+        if st.session_state.elabftw_multi_upload_png_name:
+            st.write(f"Stacked PNG: `{st.session_state.elabftw_multi_upload_png_name}`")
+        else:
+            st.caption("No stacked PNG found in overlay upload package.")
+
+        if st.button("⬆ Upload overlay to eLabFTW", key="upload_multi_to_elab_btn"):
+            if not selected_id:
+                st.error("Please select a target experiment first.")
+                return
+
+            try:
+                conn = make_connection(
+                    st.session_state.elabftw_base_url,
+                    st.session_state.elabftw_api_key,
+                )
+
+                uploaded = []
+
+                upload_attachment_to_experiment(
+                    conn,
+                    int(selected_id),
+                    filename=st.session_state.elabftw_multi_upload_zip_name,
+                    content=st.session_state.elabftw_multi_upload_zip_bytes,
+                    mime_type="application/zip",
+                )
+                uploaded.append(st.session_state.elabftw_multi_upload_zip_name)
+
+                if (
+                    st.session_state.elabftw_multi_upload_png_name
+                    and st.session_state.elabftw_multi_upload_png_bytes
+                ):
+                    upload_attachment_to_experiment(
+                        conn,
+                        int(selected_id),
+                        filename=st.session_state.elabftw_multi_upload_png_name,
+                        content=st.session_state.elabftw_multi_upload_png_bytes,
+                        mime_type="image/png",
+                    )
+                    uploaded.append(st.session_state.elabftw_multi_upload_png_name)
+
+                st.success("Overlay upload completed.")
+                for name in uploaded:
+                    st.write(f"Uploaded: `{name}`")
+
+            except Exception as exc:
+                st.error(f"Overlay upload failed: {exc}")

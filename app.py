@@ -504,6 +504,8 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
         default=spectrum_names,
     )
     
+    st.session_state.selected_overlay_names = selected_overlay_names
+    
     slider_key = f"intensity_scale_{selected_spectrum_name}"
 
     if slider_key not in st.session_state:
