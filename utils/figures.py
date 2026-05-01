@@ -341,83 +341,22 @@ def create_overlay_figure(
 def create_normalized_overlay_figure(
     spectra_dict,
     processing_kwargs=None,
-    x_shifts=None, 
+    x_shifts=None,
     title="Normalized Overlay",
     x_label="Raman shift / cm⁻¹",
     y_label="Normalized intensity",
     show_peaks=False,
 ):
-
-    all_x = []
-    
-    processing_kwargs = processing_kwargs or {}
-    x_shifts = x_shifts or {}
-    fig = go.Figure()
-
-    for i, (name, spectrum) in enumerate(spectra_dict.items()):
-        color = PLOT_COLORS[i % len(PLOT_COLORS)]
-
-        local_processing_kwargs = dict(processing_kwargs)
-        local_processing_kwargs["x_shift"] = x_shifts.get(name, 0.0)
-
-        result = process_spectrum(
-            spectrum["x"],
-            spectrum["y"],
-            **local_processing_kwargs,
-        )
-        
-        all_x.extend(result["x"])
-        
-        y = np.asarray(result["smoothed"], dtype=float)
-        ymax = np.max(y) if y.size > 0 else 1.0
-        y_norm = y / ymax if ymax != 0 else y
-
-        fig.add_trace(
-            go.Scatter(
-                x=result["x"],
-                y=y_norm,
-                mode="lines",
-                name=_shorten_name(name),
-                customdata=[name] * len(result["x"]),
-                hovertemplate=(
-                    "x: %{x:.1f}<br>y: %{y:.1f}"
-                    f"<extra><b>{name}</b></extra>"
-                ),
-                legendgroup=name,
-                line=dict(width=2, color=color),
-            )
-        )
-
-        if show_peaks and len(result["peaks"]["x"]) > 0:
-            peak_x = result["peaks"]["x"]
-            peak_y = result["peaks"]["y"] / ymax if ymax != 0 else result["peaks"]["y"]
-
-            peak_result_norm = {
-                "x": peak_x,
-                "y": peak_y,
-            }
-
-            _add_peak_annotations(
-                fig,
-                peak_result_norm,
-                marker_color=color,
-                marker_size=6,
-                full_name=name,
-                legendgroup=name,
-                trace_name="Peak",
-                showlegend=False,
-            )
-
-    fig.update_layout(
+    return create_stacked_figure(
+        spectra_dict=spectra_dict,
+        processing_kwargs=processing_kwargs,
+        x_shifts=x_shifts,
         title=title,
-        height=800,
-        xaxis_title=x_label,
-        yaxis_title=y_label,
+        x_label=x_label,
+        y_label=y_label,
+        step=0.0,
+        show_peaks=show_peaks,
     )
-    
-    _expand_xaxis(fig, all_x)
-    return _axis_style(fig)
-
 
 def create_stacked_figure(
     spectra_dict,

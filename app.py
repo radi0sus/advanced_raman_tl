@@ -12,8 +12,11 @@ from utils.processing import process_spectrum
 from utils.figures import (
     create_single_view_figure,
     create_overlay_figure,
-    create_normalized_overlay_figure,
-    create_stacked_figure,
+)
+
+from utils.multi_plot_tab import (
+    render_normalized_overlay_tab,
+    render_stacked_spectra_tab,
 )
 
 from utils.export_tab import render_export_tab
@@ -77,6 +80,9 @@ def init_session_state():
     
     if "session_export_signature" not in st.session_state:
         st.session_state.session_export_signature = None
+        
+    if "stack_step" not in st.session_state:
+        st.session_state.stack_step = 1.2
     
 
 def make_file_key(uploaded_file) -> str:
@@ -447,28 +453,6 @@ def cached_overlay_figure(spectra_hashable, kwargs_json, intensity_scales_json, 
     )
 
 
-@st.cache_data(show_spinner=False)
-def cached_normalized_overlay_figure(spectra_hashable, kwargs_json, x_shifts_json, title, show_peaks):
-    return create_normalized_overlay_figure(
-        _hashable_to_spectra(spectra_hashable),
-        processing_kwargs=json.loads(kwargs_json),
-        x_shifts=json.loads(x_shifts_json),
-        title=title,
-        show_peaks=show_peaks,
-    )
-
-
-@st.cache_data(show_spinner=False)
-def cached_stacked_figure(spectra_hashable, kwargs_json, x_shifts_json, title, show_peaks, step):
-    return create_stacked_figure(
-        _hashable_to_spectra(spectra_hashable),
-        processing_kwargs=json.loads(kwargs_json),
-        x_shifts=json.loads(x_shifts_json),
-        title=title,
-        show_peaks=show_peaks,
-        step=step,
-    )
-
 init_session_state()
 
 st.title("Raman Analysis")
@@ -563,14 +547,24 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
 with st.sidebar.expander("Display options", expanded=False):
     show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
     show_multi_peaks = st.checkbox("Show peaks (overlay & stacked)", value=True, key="multi_show_peaks")
+
     xmin, xmax = st.slider(
-                    "wn range (cm⁻¹)",
-                    min_value=0,
-                    max_value=4000,
-                    value=(100, 3200),
-                    step=1,
-                    key="wn_range",
-                )
+        "wn range (cm⁻¹)",
+        min_value=0,
+        max_value=4000,
+        value=(100, 3200),
+        step=1,
+        key="wn_range",
+    )
+
+    st.slider(
+        "Stack spacing",
+        min_value=0.0,
+        max_value=2.0,
+        #value=1.2,
+        step=0.01,
+        key="stack_step",
+    )
 
 processing_kwargs = build_processing_kwargs()
 st.session_state.processing_kwargs = processing_kwargs
@@ -636,58 +630,20 @@ with tabs[1]:
         st.error(f"Overlay error: {exc}")
 
 with tabs[2]:
-    try:
-        selected_spectra = {
-            name: spectra[name]
-            for name in selected_overlay_names
-            if name in spectra
-        }
-
-        if not selected_spectra:
-            st.warning("Please select at least one spectrum for normalized overlay.")
-        else:
-            fig = cached_normalized_overlay_figure(
-                _spectra_to_hashable(selected_spectra),
-                json.dumps(processing_kwargs, sort_keys=True),
-                json.dumps(dict(sorted(st.session_state.x_shifts.items()))),
-                "Normalized Overlay",
-                show_multi_peaks,
-            )
-            st.plotly_chart(fig, width="stretch")
-    except Exception as exc:
-        st.error(f"Normalized overlay error: {exc}")
+    render_normalized_overlay_tab(
+        spectra=spectra,
+        selected_overlay_names=selected_overlay_names,
+        processing_kwargs=processing_kwargs,
+        show_multi_peaks=show_multi_peaks,
+    )
 
 with tabs[3]:
-    try:
-        selected_spectra = {
-            name: spectra[name]
-            for name in selected_overlay_names
-            if name in spectra
-        }
-
-        if not selected_spectra:
-            st.warning("Please select at least one spectrum for stacked view.")
-        else:
-            stack_step = st.slider(
-                "Stack spacing",
-                min_value=0.0,
-                max_value=2.0,
-                value=1.2,
-                step=0.001,
-                key="stack_step",
-            )
-
-            fig = cached_stacked_figure(
-                _spectra_to_hashable(selected_spectra),
-                json.dumps(processing_kwargs, sort_keys=True),
-                json.dumps(dict(sorted(st.session_state.x_shifts.items()))),
-                "Stacked Spectra",
-                show_multi_peaks,
-                stack_step,
-            )
-            st.plotly_chart(fig, width="stretch")
-    except Exception as exc:
-        st.error(f"Stacked figure error: {exc}")
+    render_stacked_spectra_tab(
+        spectra=spectra,
+        selected_overlay_names=selected_overlay_names,
+        processing_kwargs=processing_kwargs,
+        show_multi_peaks=show_multi_peaks,
+    )
 
 with tabs[4]:
     render_export_tab(

@@ -472,78 +472,16 @@ def create_normalized_overlay_mpl_figure(
     y_label: str = "Normalized intensity",
     show_peaks: bool = False,
 ):
-    processing_kwargs = processing_kwargs or {}
-    x_shifts = x_shifts or {}
-
-    fig, ax = plt.subplots(figsize=(11.69, 8.27))
-    all_x = []
-
-    for i, (name, spectrum) in enumerate(spectra_dict.items()):
-        color = PLOT_COLORS[i % len(PLOT_COLORS)]
-
-        local_processing_kwargs = dict(processing_kwargs)
-        local_processing_kwargs["x_shift"] = x_shifts.get(name, 0.0)
-
-        result = process_spectrum(
-            spectrum["x"],
-            spectrum["y"],
-            **local_processing_kwargs,
-        )
-
-        x = np.asarray(result["x"], dtype=float)
-        y = np.asarray(result["smoothed"], dtype=float)
-        ymax = np.max(y) if y.size > 0 else 1.0
-        y_norm = y / ymax if ymax != 0 else y
-
-        all_x.extend(x.tolist())
-
-        ax.plot(
-            x,
-            y_norm,
-            linewidth=1.5,
-            color=color,
-            label=name,
-        )
-
-        if show_peaks and len(result["peaks"]["x"]) > 0:
-            peak_x = np.asarray(result["peaks"]["x"], dtype=float)
-            peak_y = np.asarray(result["peaks"]["y"], dtype=float)
-            peak_y = peak_y / ymax if ymax != 0 else peak_y
-
-            _annotate_peaks(
-                ax,
-                peak_x,
-                peak_y,
-                color=color,
-                fontsize=7,
-                marker_size=18,
-            )
-
-    ax.set_title(title, loc="left", fontsize=13, color="#0f172a")
-    ax.set_xlabel(x_label, fontsize=11)
-    ax.set_ylabel(y_label, fontsize=11)
-
-    _apply_axis_style(ax)
-    ax.legend(
-        loc="upper left",
-        bbox_to_anchor=(0.0, -0.10),
-        ncol=2,
-        fontsize=8.5,
-        frameon=False,
-        handlelength=1.8,
-        handletextpad=0.5,
-        labelspacing=0.3,
-        columnspacing=0.8,
-        borderaxespad=0.2,
+    return create_stacked_mpl_figure(
+        spectra_dict=spectra_dict,
+        processing_kwargs=processing_kwargs,
+        x_shifts=x_shifts,
+        title=title,
+        x_label=x_label,
+        y_label=y_label,
+        step=0.0,
+        show_peaks=show_peaks,
     )
-
-    xlim = _expand_limits(all_x)
-    if xlim is not None:
-        ax.set_xlim(*xlim)
-
-    fig.subplots_adjust(top=0.90, left=0.08, right=0.97, bottom=0.22)
-    _add_footer(fig)
-    return fig
 
 
 def create_stacked_mpl_figure(
