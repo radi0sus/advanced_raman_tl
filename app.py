@@ -30,7 +30,7 @@ except ImportError:
 
 
 st.set_page_config(
-    page_title="Raman Analysis",
+    page_title="Advanced Raman Tool",
     layout="wide",
 )
 
@@ -455,7 +455,7 @@ def cached_overlay_figure(spectra_hashable, kwargs_json, intensity_scales_json, 
 
 init_session_state()
 
-st.title("Raman Analysis")
+st.title("Advanced Raman Tool")
 
 uploaded_files = st.sidebar.file_uploader(
     "Upload Raman spectra",
@@ -468,7 +468,15 @@ sync_uploaded_files(uploaded_files)
 spectra = st.session_state.spectra
 
 if not spectra:
-    st.info("Upload one or more spectra to begin.")
+    st.info(
+        """
+        Upload one or more spectra to begin. \n\n 
+        TXT: Plain text files w/o header - 2 col. - wn [space] I \n\n 
+        XML: HORIBA LabSpec XML files \n\n
+        L6S: HORIBA LabSpec L6S files \n\n
+        Files containing more than one spectrum are not supported.
+        """
+    )
     st.stop()
 
 with st.sidebar.expander("Spectrum selection", expanded=True):
@@ -648,7 +656,7 @@ with tabs[2]:
 
 with tabs[3]:
     st.caption(
-        "Display the selected normalized spectra with adjustable vertical spacing."
+        "Display the selected normalized spectra with adjustable vertical spacing (Display options)."
     )
     render_stacked_spectra_tab(
         spectra=spectra,

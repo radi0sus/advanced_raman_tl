@@ -139,7 +139,7 @@ def render_export_tab(
     show_peaks: bool,
     show_multi_peaks: bool,
 ):
-    st.markdown("#####  Export packages")
+    #st.markdown("#####  Export packages")
     st.caption(
         "Create ZIP packages for the active spectrum, selected multi-spectra views, "
         "or the full session. The optional prefix only changes the downloaded ZIP filename."
