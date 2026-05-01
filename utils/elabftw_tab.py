@@ -362,7 +362,7 @@ def build_elabftw_session_upload_signature(
 def render_elabftw_single_upload_section():
     init_elabftw_session_state()
 
-    st.markdown("### Upload to eLabFTW")
+    st.markdown("##### Upload to eLabFTW")
     st.caption(
         "Uploads are attached to an existing eLabFTW experiment. "
         "Credentials are stored only for the current session."

@@ -579,6 +579,9 @@ with st.sidebar.expander("Spectrum Info", expanded=False):
 tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra", "Export","eLabFTW"])
 
 with tabs[0]:
+    st.caption(
+        "Display the processed active spectrum with baseline, smoothing, and peak annotations."
+    )
     try:
         single_processing_kwargs = dict(processing_kwargs)
         single_processing_kwargs["intensity_scale"] = st.session_state.intensity_scales.get(
@@ -607,6 +610,9 @@ with tabs[0]:
         st.error(f"Processing error: {exc}")
 
 with tabs[1]:
+    st.caption(
+        "Display the selected processed spectra in a shared overlay for direct comparison."
+    )
     try:
         selected_spectra = {
             name: spectra[name]
@@ -630,6 +636,9 @@ with tabs[1]:
         st.error(f"Overlay error: {exc}")
 
 with tabs[2]:
+    st.caption(
+        "Display the selected spectra after normalization for comparison of relative spectral features."
+    )
     render_normalized_overlay_tab(
         spectra=spectra,
         selected_overlay_names=selected_overlay_names,
@@ -638,6 +647,9 @@ with tabs[2]:
     )
 
 with tabs[3]:
+    st.caption(
+        "Display the selected normalized spectra with adjustable vertical spacing."
+    )
     render_stacked_spectra_tab(
         spectra=spectra,
         selected_overlay_names=selected_overlay_names,

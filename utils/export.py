@@ -220,7 +220,23 @@ def build_multi_spectra_csv_bytes(
 #    return fig.to_html(full_html=True, include_plotlyjs=True).encode("utf-8")
 
 def build_figure_html_bytes(fig) -> bytes:
-    return fig.to_html(full_html=True, include_plotlyjs="cdn").encode("utf-8")
+    html_doc = fig.to_html(full_html=True, include_plotlyjs="cdn")
+
+    footer = """
+    <div style="margin: 1.5rem 2rem 1rem 2rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; font-size: 0.9rem; color: #64748b; font-family: Arial, sans-serif;">
+      Generated with Advanced Raman Tool ·
+      <a href="https://github.com/radi0sus/advanced_raman_tl" target="_blank" rel="noopener noreferrer">
+        https://github.com/radi0sus/advanced_raman_tl
+      </a>
+    </div>
+    """
+
+    if "</body>" in html_doc:
+        html_doc = html_doc.replace("</body>", footer + "\n</body>")
+    else:
+        html_doc += footer
+
+    return html_doc.encode("utf-8")    
     
 def build_zip_bytes(files: dict[str, bytes]) -> bytes:
     buffer = io.BytesIO()
@@ -533,14 +549,6 @@ def build_summary_html_bytes(
     </div>
     """.replace("{plot}", plot_divs[-1]))
     
-    body_parts.append(f"""
-    <div style="margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; font-size: 0.9rem; color: #64748b;">
-      Generated with Advanced Raman Tool ·
-      <a href="https://github.com/radi0sus/advanced_raman_tl" target="_blank">
-       https://github.com/radi0sus/advanced_raman_tl
-      </a>
-    </div>
-    """)
 
     html_doc = f"""
     <!DOCTYPE html>
@@ -604,6 +612,20 @@ def build_summary_html_bytes(
         
         #raman-navbar .nav-print-button:hover {{
           background: #e2e8f0;
+        }}
+        
+        #raman-navbar .nav-footer {{
+          color: #64748b;
+          font-size: 0.9rem;
+        }}
+        
+        #raman-navbar .nav-footer a {{
+          color: #2563eb;
+          text-decoration: none;
+        }}
+        
+        #raman-navbar .nav-footer a:hover {{
+          text-decoration: underline;
         }}
         
         #nav-overview,
@@ -695,19 +717,25 @@ def build_summary_html_bytes(
         }}
         .meta {{
           border-collapse: collapse;
-          margin: 0.8rem 0 1rem 0;
+          margin: 0.5rem 0 0.8rem 0;
           width: 100%;
-          max-width: 1000px;
+          max-width: 900px;
+          font-size: 0.9rem;
+          line-height: 1.3;
         }}
+        
         .meta th {{
           text-align: left;
           vertical-align: top;
-          padding: 0.35rem 0.75rem 0.35rem 0;
-          width: 240px;
-          color: #334155;
+          padding: 0.18rem 0.6rem 0.18rem 0;
+          width: 180px;
+          color: #64748b;
+          font-weight: 600;
         }}
+        
         .meta td {{
-          padding: 0.35rem 0;
+          padding: 0.18rem 0;
+          color: #0f172a;
         }}
         .links {{
           margin: 0.5rem 0 1rem 0;
@@ -743,11 +771,18 @@ def build_summary_html_bytes(
         <a href="#nav-processing">Processing</a>
         <a href="#nav-spectra">Spectra</a>
         <a href="#nav-overlay">Overlays</a>
-         <button type="button" class="nav-print-button" onclick="window.print()">🖨 Print / PDF</button>
+        <button type="button" class="nav-print-button" onclick="window.print()">🖨 Print / PDF</button>
         <span class="nav-divider">|</span>
         <span class="nav-subtitle">Singles:</span>
         {''.join(spectrum_nav_links)}
-      </nav>
+        <span class="nav-divider">|</span>
+        <span class="nav-footer">
+          Generated with Advanced Raman Tool ·
+          <a href="https://github.com/radi0sus/advanced_raman_tl" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+        </span>
+</nav>
       {''.join(body_parts)}
       <script>
         {''.join(plot_scripts)}
