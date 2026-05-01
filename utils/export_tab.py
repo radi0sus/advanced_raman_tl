@@ -5,6 +5,17 @@ import json
 
 import streamlit as st
 
+def apply_filename_prefix(filename: str, prefix: str | None) -> str:
+    prefix = (prefix or "").strip()
+    if not prefix:
+        return filename
+
+    safe_prefix = prefix.replace("/", "_").replace("\\", "_").strip()
+    if not safe_prefix:
+        return filename
+
+    return f"{safe_prefix}_{filename}"
+
 from utils.package_creation import (
     build_single_export_artifacts,
     build_multi_export_artifacts,
@@ -107,6 +118,12 @@ def render_export_tab(
 ):
     st.markdown("### Export active spectrum")
 
+    st.text_input(
+        "Filename prefix (optional)",
+        placeholder="Enter an optional prefix for downloaded ZIP files...",
+        key="export_zip_filename_prefix",
+    )
+
     include_csv = st.checkbox("Include processed data (CSV)", value=True, key="single_include_csv")
     include_metadata = st.checkbox("Include metadata (TXT)", value=True, key="single_include_metadata")
     include_full_figure = st.checkbox("Include plot (HTML / PNG)", value=True, key="single_include_figure")
@@ -163,10 +180,16 @@ def render_export_tab(
                 st.error(f"Export error: {exc}")
     else:
         st.success("Export package ready for download.")
+        
+        prefixed_single_zip_name = apply_filename_prefix(
+            st.session_state.single_export_zip_name,
+            st.session_state.get("export_zip_filename_prefix", ""),
+        )
+
         st.download_button(
-            label=f"⬇ Download {st.session_state.single_export_zip_name}",
+            label=f"⬇ Download {prefixed_single_zip_name}",
             data=st.session_state.single_export_zip_bytes,
-            file_name=st.session_state.single_export_zip_name,
+            file_name=prefixed_single_zip_name,
             mime="application/zip",
             key="download_single_export",
         )
@@ -242,10 +265,16 @@ def render_export_tab(
                 st.error(f"Multi export error: {exc}")
     else:
         st.success("Multi-spectra export package ready for download.")
+        
+        prefixed_multi_zip_name = apply_filename_prefix(
+            st.session_state.multi_export_zip_name,
+            st.session_state.get("export_zip_filename_prefix", ""),
+        )
+
         st.download_button(
-            label=f"⬇ Download {st.session_state.multi_export_zip_name}",
+            label=f"⬇ Download {prefixed_multi_zip_name}",
             data=st.session_state.multi_export_zip_bytes,
-            file_name=st.session_state.multi_export_zip_name,
+            file_name=prefixed_multi_zip_name,
             mime="application/zip",
             key="download_multi_export",
         )
@@ -334,10 +363,16 @@ def render_export_tab(
                 st.error(f"Session export error: {exc}")
     else:
         st.success("Session export package ready for download.")
+        
+        prefixed_session_zip_name = apply_filename_prefix(
+            st.session_state.session_export_zip_name,
+            st.session_state.get("export_zip_filename_prefix", ""),
+        )
+
         st.download_button(
-            label=f"⬇ Download {st.session_state.session_export_zip_name}",
+            label=f"⬇ Download {prefixed_session_zip_name}",
             data=st.session_state.session_export_zip_bytes,
-            file_name=st.session_state.session_export_zip_name,
+            file_name=prefixed_session_zip_name,
             mime="application/zip",
             key="download_session_export",
         )

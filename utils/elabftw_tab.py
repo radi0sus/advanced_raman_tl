@@ -12,6 +12,7 @@ import streamlit as st
 from utils.package_creation import (
     build_single_export_artifacts,
     build_multi_export_artifacts,
+    build_session_export_artifacts,
 )
 
 
@@ -26,6 +27,7 @@ def init_elabftw_session_state():
     defaults = {
         "elabftw_base_url": "",
         "elabftw_api_key": "",
+        "elabftw_upload_prefix": "",
         "elabftw_recent_experiments": [],
         "elabftw_selected_experiment_id": None,
         "elabftw_selected_experiment_label": None,
@@ -44,6 +46,11 @@ def init_elabftw_session_state():
         "elabftw_multi_upload_png_bytes": None,
         "elabftw_multi_upload_png_name": None,
         "elabftw_multi_upload_signature": None,
+        "elabftw_session_upload_zip_bytes": None,
+        "elabftw_session_upload_zip_name": None,
+        "elabftw_session_upload_pdf_bytes": None,
+        "elabftw_session_upload_pdf_name": None,
+        "elabftw_session_upload_signature": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -81,6 +88,16 @@ def make_connection(base_url: str, api_key: str) -> ElabConnection:
         api_key=(api_key or "").strip(),
     )
 
+def apply_upload_prefix(filename: str, prefix: str | None) -> str:
+    prefix = (prefix or "").strip()
+    if not prefix:
+        return filename
+
+    safe_prefix = prefix.replace("/", "_").replace("\\", "_").strip()
+    if not safe_prefix:
+        return filename
+
+    return f"{safe_prefix}_{filename}"
 
 def _safe_get(d: dict[str, Any], *keys, default=None):
     for key in keys:
@@ -243,6 +260,13 @@ def _reset_elabftw_multi_upload_package():
     st.session_state.elabftw_multi_upload_png_name = None
     st.session_state.elabftw_multi_upload_signature = None
 
+def _reset_elabftw_session_upload_package():
+    st.session_state.elabftw_session_upload_zip_bytes = None
+    st.session_state.elabftw_session_upload_zip_name = None
+    st.session_state.elabftw_session_upload_pdf_bytes = None
+    st.session_state.elabftw_session_upload_pdf_name = None
+    st.session_state.elabftw_session_upload_signature = None
+
 def _load_recent_experiments_into_session():
     conn = make_connection(
         st.session_state.elabftw_base_url,
@@ -302,6 +326,34 @@ def build_elabftw_multi_upload_signature(
         json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()
 
+def build_elabftw_session_upload_signature(
+    spectra: dict[str, dict],
+    selected_overlay_names: list[str],
+    processing_kwargs: dict,
+    show_single_peaks: bool,
+    show_multi_peaks: bool,
+    stack_step: float,
+) -> str:
+    payload = {
+        "spectrum_names": sorted(spectra.keys()),
+        "selected_overlay_names": sorted(selected_overlay_names),
+        "processing_kwargs": processing_kwargs,
+        "x_shifts": st.session_state.x_shifts,
+        "intensity_scales": st.session_state.intensity_scales,
+        "show_single_peaks": show_single_peaks,
+        "show_multi_peaks": show_multi_peaks,
+        "stack_step": stack_step,
+        "include_session_single_exports": True,
+        "include_session_original_files": True,
+        "include_session_overlay_csv": True,
+        "include_session_summary": True,
+        "direct_pdf_for_upload": "summary.pdf",
+    }
+
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
 # -----------------------------
 # UI 
 # -----------------------------
@@ -327,6 +379,12 @@ def render_elabftw_single_upload_section():
             "API key",
             type="password",
             key="elabftw_api_key_input",
+        )
+        
+        st.text_input(
+            "Filename prefix (optional)",
+            placeholder="Enter an optional prefix for uploaded files...",
+            key="elabftw_upload_prefix",
         )
 
         if st.button("Connect to eLabFTW", key="elabftw_connect_btn"):
@@ -358,6 +416,7 @@ def render_elabftw_single_upload_section():
                     _reset_selected_experiment()
                     _reset_elabftw_single_upload_package()
                     _reset_elabftw_multi_upload_package()
+                    _reset_elabftw_session_upload_package()
                     st.success(msg)
                 except Exception as exc:
                     st.session_state.elabftw_recent_experiments = []
@@ -383,6 +442,7 @@ def render_elabftw_single_upload_section():
             _reset_selected_experiment()
             _reset_elabftw_single_upload_package()
             _reset_elabftw_multi_upload_package()
+            _reset_elabftw_session_upload_package()            
         except Exception as exc:
             st.error(f"Failed to reload experiments: {exc}")
 
@@ -419,6 +479,7 @@ def render_elabftw_single_upload_section():
         if st.session_state.elabftw_selected_experiment_id != new_selected_id:
             _reset_elabftw_single_upload_package()
             _reset_elabftw_multi_upload_package()
+            _reset_elabftw_session_upload_package()            
 
         st.session_state.elabftw_selected_experiment_id = new_selected_id
         st.session_state.elabftw_selected_experiment_label = selected_label
@@ -523,12 +584,20 @@ def render_elabftw_single_upload_section():
                     st.session_state.elabftw_api_key,
                 )
 
+                upload_prefix = st.session_state.get("elabftw_upload_prefix", "")
+
                 uploaded = upload_single_export_to_experiment(
                     conn=conn,
                     experiment_id=int(selected_id),
-                    zip_name=st.session_state.elabftw_single_upload_zip_name,
+                    zip_name=apply_upload_prefix(
+                        st.session_state.elabftw_single_upload_zip_name,
+                        upload_prefix,
+                    ),
                     zip_bytes=st.session_state.elabftw_single_upload_zip_bytes,
-                    png_name=st.session_state.elabftw_single_upload_png_name,
+                    png_name=apply_upload_prefix(
+                        st.session_state.elabftw_single_upload_png_name,
+                        upload_prefix,
+                    ) if st.session_state.elabftw_single_upload_png_name else None,
                     png_bytes=st.session_state.elabftw_single_upload_png_bytes,
                 )
 
@@ -640,29 +709,40 @@ def render_elabftw_single_upload_section():
                     st.session_state.elabftw_api_key,
                 )
 
+                upload_prefix = st.session_state.get("elabftw_upload_prefix", "")
                 uploaded = []
+
+                prefixed_zip_name = apply_upload_prefix(
+                    st.session_state.elabftw_multi_upload_zip_name,
+                    upload_prefix,
+                )
 
                 upload_attachment_to_experiment(
                     conn,
                     int(selected_id),
-                    filename=st.session_state.elabftw_multi_upload_zip_name,
+                    filename=prefixed_zip_name,
                     content=st.session_state.elabftw_multi_upload_zip_bytes,
                     mime_type="application/zip",
                 )
-                uploaded.append(st.session_state.elabftw_multi_upload_zip_name)
+                uploaded.append(prefixed_zip_name)
 
                 if (
                     st.session_state.elabftw_multi_upload_png_name
                     and st.session_state.elabftw_multi_upload_png_bytes
                 ):
+                    prefixed_png_name = apply_upload_prefix(
+                        st.session_state.elabftw_multi_upload_png_name,
+                        upload_prefix,
+                    )
+
                     upload_attachment_to_experiment(
                         conn,
                         int(selected_id),
-                        filename=st.session_state.elabftw_multi_upload_png_name,
+                        filename=prefixed_png_name,
                         content=st.session_state.elabftw_multi_upload_png_bytes,
                         mime_type="image/png",
                     )
-                    uploaded.append(st.session_state.elabftw_multi_upload_png_name)
+                    uploaded.append(prefixed_png_name)
 
                 st.success("Overlay upload completed.")
                 for name in uploaded:
@@ -670,3 +750,141 @@ def render_elabftw_single_upload_section():
 
             except Exception as exc:
                 st.error(f"Overlay upload failed: {exc}")
+
+    # -----------------------------
+    # UI 
+    # -----------------------------
+    # Session
+    st.markdown("#### Upload session export")
+
+    show_single_peaks = bool(st.session_state.get("single_show_peaks", True))
+    show_multi_peaks = bool(st.session_state.get("multi_show_peaks", True))
+    stack_step = float(st.session_state.get("stack_step", 1.2))
+    selected_overlay_names = st.session_state.get("selected_overlay_names", [])
+
+    current_session_upload_signature = build_elabftw_session_upload_signature(
+        spectra=spectra,
+        selected_overlay_names=selected_overlay_names,
+        processing_kwargs=processing_kwargs,
+        show_single_peaks=show_single_peaks,
+        show_multi_peaks=show_multi_peaks,
+        stack_step=stack_step,
+    )
+
+    if st.session_state.elabftw_session_upload_signature != current_session_upload_signature:
+        _reset_elabftw_session_upload_package()
+        st.session_state.elabftw_session_upload_signature = current_session_upload_signature
+
+    if (
+        st.session_state.elabftw_session_upload_zip_bytes is None
+        or st.session_state.elabftw_session_upload_zip_name is None
+    ):
+        if st.button("Create session upload package", key="create_elabftw_session_upload_package"):
+            try:
+                artifacts = build_session_export_artifacts(
+                    spectra=spectra,
+                    selected_overlay_names=selected_overlay_names,
+                    processing_kwargs=processing_kwargs,
+                    x_shifts=st.session_state.x_shifts,
+                    intensity_scales=st.session_state.intensity_scales,
+                    original_bytes_cache=st.session_state.get("original_bytes_cache", {}),
+                    stack_step=stack_step,
+                    show_single_peaks=show_single_peaks,
+                    show_multi_peaks=show_multi_peaks,
+                    include_session_single_exports=True,
+                    include_session_original_files=True,
+                    include_session_overlay_csv=True,
+                    include_session_summary=True,
+                )
+
+                if not artifacts.files:
+                    st.error("Failed to create session export artifacts.")
+                    return
+
+                st.session_state.elabftw_session_upload_zip_bytes = artifacts.build_zip_bytes()
+                st.session_state.elabftw_session_upload_zip_name = artifacts.zip_name
+                st.session_state.elabftw_session_upload_pdf_name = next(
+                    (
+                        name.split("/")[-1]
+                        for name in artifacts.files.keys()
+                        if name.lower().endswith("summary.pdf")
+                    ),
+                    None,
+                )
+                st.session_state.elabftw_session_upload_pdf_bytes = next(
+                    (
+                        content
+                        for name, content in artifacts.files.items()
+                        if name.lower().endswith("summary.pdf")
+                    ),
+                    None,
+                )
+                st.session_state.elabftw_session_upload_signature = current_session_upload_signature
+
+                st.success("Session upload package created.")
+                st.rerun()
+
+            except Exception as exc:
+                st.error(f"Session package creation failed: {exc}")
+    else:
+        st.success("Session upload package ready.")
+        st.write(f"ZIP package: `{st.session_state.elabftw_session_upload_zip_name}`")
+
+        if st.session_state.elabftw_session_upload_pdf_name:
+            st.write(f"Summary PDF: `{st.session_state.elabftw_session_upload_pdf_name}`")
+        else:
+            st.caption("No summary PDF found in session upload package.")
+
+        if st.button("⬆ Upload session to eLabFTW", key="upload_session_to_elab_btn"):
+            if not selected_id:
+                st.error("Please select a target experiment first.")
+                return
+
+            try:
+                conn = make_connection(
+                    st.session_state.elabftw_base_url,
+                    st.session_state.elabftw_api_key,
+                )
+
+                upload_prefix = st.session_state.get("elabftw_upload_prefix", "")
+                uploaded = []
+
+                prefixed_zip_name = apply_upload_prefix(
+                    st.session_state.elabftw_session_upload_zip_name,
+                    upload_prefix,
+                )
+
+                upload_attachment_to_experiment(
+                    conn,
+                    int(selected_id),
+                    filename=prefixed_zip_name,
+                    content=st.session_state.elabftw_session_upload_zip_bytes,
+                    mime_type="application/zip",
+                )
+                uploaded.append(prefixed_zip_name)
+
+                if (
+                    st.session_state.elabftw_session_upload_pdf_name
+                    and st.session_state.elabftw_session_upload_pdf_bytes
+                ):
+                    prefixed_pdf_name = apply_upload_prefix(
+                        st.session_state.elabftw_session_upload_pdf_name,
+                        upload_prefix,
+                    )
+
+                    upload_attachment_to_experiment(
+                        conn,
+                        int(selected_id),
+                        filename=prefixed_pdf_name,
+                        content=st.session_state.elabftw_session_upload_pdf_bytes,
+                        mime_type="application/pdf",
+                    )
+                    uploaded.append(prefixed_pdf_name)
+
+                st.success("Session upload completed.")
+                for name in uploaded:
+                    st.write(f"Uploaded: `{name}`")
+
+            except Exception as exc:
+                st.error(f"Session upload failed: {exc}")   
+    
