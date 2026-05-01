@@ -39,7 +39,8 @@ st.markdown(
     <style>
     .github-corner-link {
         position: fixed;
-        right: 16px;
+        left: 60%;
+        transform: translateX(-50%);
         bottom: 12px;
         z-index: 9999;
         font-size: 0.82rem;
@@ -59,7 +60,7 @@ st.markdown(
 
     <div class="github-corner-link">
         <a href="https://github.com/radi0sus/advanced_raman_tl" target="_blank">
-            GitHub ↗
+            Advanced Raman Tool · GitHub ↗
         </a>
     </div>
     """,
