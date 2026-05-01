@@ -34,6 +34,38 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown(
+    """
+    <style>
+    .github-corner-link {
+        position: fixed;
+        right: 16px;
+        bottom: 12px;
+        z-index: 9999;
+        font-size: 0.82rem;
+        color: #64748b;
+        opacity: 0.8;
+    }
+
+    .github-corner-link a {
+        color: #2563eb;
+        text-decoration: none;
+    }
+
+    .github-corner-link a:hover {
+        text-decoration: underline;
+    }
+    </style>
+
+    <div class="github-corner-link">
+        <a href="https://github.com/radi0sus/advanced_raman_tl" target="_blank">
+            GitHub ↗
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 def init_session_state():
     if "spectra" not in st.session_state:
         st.session_state.spectra = {}
@@ -455,7 +487,7 @@ def cached_overlay_figure(spectra_hashable, kwargs_json, intensity_scales_json, 
 
 init_session_state()
 
-st.title("Advanced Raman Tool")
+st.title(":blue[Advanced Raman Tool]")
 
 uploaded_files = st.sidebar.file_uploader(
     "Upload Raman spectra",
