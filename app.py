@@ -515,7 +515,8 @@ if not spectra:
     col_left, col_center, col_right = st.columns([1, 4, 1])
     with col_center:
         st.video(
-            "https://raw.githubusercontent.com/radi0sus/media/main/advanced_raman_tl/demo_c.mp4",
+            "https://raw.githubusercontent.com/radi0sus/media/main/advanced_raman_tl/demo_d.mp4",
+            format="video/mp4",
             autoplay=False,
             muted=True,
             loop=True,
