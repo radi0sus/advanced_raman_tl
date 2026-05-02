@@ -7,6 +7,10 @@
 
 A web-based application for baseline correction, smoothing, processing, visualization, export, and optional eLabFTW upload of Raman spectra.
 
+<p align="center">
+    <img width="900" alt="screenshot" src="https://raw.githubusercontent.com/radi0sus/media/main/advanced_raman_tl/screen.png">
+</p>
+
 In general, the workflow and processing logic are similar to the original [`raman-tl.py`](https://github.com/radi0sus/raman_tl). For many practical questions, the original documentation is still a useful reference. The main differences are summarized below.
 
 ## Main differences compared to `raman-tl.py`
