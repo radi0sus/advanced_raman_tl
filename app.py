@@ -705,7 +705,10 @@ with tabs[2]:
     
 with tabs[3]:
     st.caption(
-        "Display the selected normalized spectra with adjustable vertical spacing for clearer comparison of overlapping features."
+        """
+        Display the selected normalized spectra with adjustable vertical spacing 
+        (Display options) for clearer comparison of overlapping features.
+        """
     )
     render_stacked_spectra_tab(
         spectra=spectra,
