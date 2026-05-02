@@ -141,15 +141,19 @@ def render_export_tab(
 ):
     #st.markdown("#####  Export packages")
     st.caption(
-        "Create ZIP packages for the active spectrum, selected multi-spectra views, "
-        "or the full session. The optional prefix only changes the downloaded ZIP filename."
+        """
+        Create ZIP packages for the active spectrum, selected multi-spectra views, or the full session. 
+        First create the export package, then download the generated ZIP file.
+        """
     )
+    
 
     with st.container(border=True):
         st.text_input(
             "Filename prefix (optional)",
             placeholder="Enter an optional prefix for downloaded ZIP files...",
             key="export_zip_filename_prefix",
+            help="Optional prefix added to the downloaded ZIP filename only. ZIP contents are not changed.",
         )
 
     # ------------------------------------------------------------------
@@ -210,7 +214,11 @@ def render_export_tab(
             ):
                 st.info("No package created yet.")
 
-                if st.button("Create export package", key="create_single_export", width="stretch"):
+                if st.button("Create export package", 
+                    key="create_single_export", 
+                    width="stretch",
+                    help="First create the export package, then download the generated ZIP file.",
+                    ):
                     try:
                         artifacts = build_single_export_artifacts(
                             spectrum_name=selected_spectrum_name,
@@ -247,7 +255,7 @@ def render_export_tab(
     # Multi export
     # ------------------------------------------------------------------
     with st.container(border=True):
-        st.markdown("##### Selected multi-spectra views")
+        st.markdown("##### Multi-spectra views")
         st.caption(
             "Export overlay, normalized overlay, stacked spectra, and combined processed data "
             "for the currently selected overlay spectra."
@@ -301,7 +309,11 @@ def render_export_tab(
             ):
                 st.info("No package created yet.")
 
-                if st.button("Create multi-spectra export package", key="create_multi_export", width="stretch"):
+                if st.button("Create multi-spectra export package", 
+                    key="create_multi_export", 
+                    width="stretch",
+                    help="First create the export package, then download the generated ZIP file.",
+                    ):
                     try:
                         selected_spectra = {
                             name: spectra[name]
@@ -402,7 +414,11 @@ def render_export_tab(
             ):
                 st.info("No package created yet.")
 
-                if st.button("Create session export package", key="create_session_export", width="stretch"):
+                if st.button("Create session export package", 
+                    key="create_session_export", 
+                    width="stretch",
+                    help="First create the export package, then download the generated ZIP file.",
+                    ):
                     try:
                         if not (
                             include_session_single_exports

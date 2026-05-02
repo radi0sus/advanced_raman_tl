@@ -67,6 +67,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 def init_session_state():
     if "spectra" not in st.session_state:
         st.session_state.spectra = {}
@@ -76,17 +77,17 @@ def init_session_state():
 
     if "file_key_to_name" not in st.session_state:
         st.session_state.file_key_to_name = {}
-        
+
     if "intensity_scales" not in st.session_state:
         st.session_state.intensity_scales = {}
-    
+
     if "x_shifts" not in st.session_state:
         st.session_state.x_shifts = {}
 
     # Bytes separat vom spectra-Dict, damit der Session State klein bleibt
     if "original_bytes_cache" not in st.session_state:
         st.session_state.original_bytes_cache = {}
-        
+
     if "single_export_zip_bytes" not in st.session_state:
         st.session_state.single_export_zip_bytes = None
 
@@ -104,19 +105,19 @@ def init_session_state():
 
     if "session_export_zip_name" not in st.session_state:
         st.session_state.session_export_zip_name = None
-        
+
     if "single_export_signature" not in st.session_state:
         st.session_state.single_export_signature = None
 
     if "multi_export_signature" not in st.session_state:
         st.session_state.multi_export_signature = None
-    
+
     if "session_export_signature" not in st.session_state:
         st.session_state.session_export_signature = None
-        
+
     if "stack_step" not in st.session_state:
         st.session_state.stack_step = 1.2
-    
+
 
 def make_file_key(uploaded_file) -> str:
     data = uploaded_file.getvalue()
@@ -154,6 +155,7 @@ def parse_uploaded_file(uploaded_file) -> dict:
             tmp_path.unlink(missing_ok=True)
         except Exception:
             pass
+
 
 def sync_uploaded_files(uploaded_files):
     current_files = uploaded_files or []
@@ -201,7 +203,7 @@ def sync_uploaded_files(uploaded_files):
 
         st.session_state.session_export_zip_bytes = None
         st.session_state.session_export_zip_name = None
-        
+
         st.session_state.session_export_signature = None
         st.session_state.single_export_signature = None
         st.session_state.multi_export_signature = None
@@ -213,17 +215,17 @@ def sync_uploaded_files(uploaded_files):
 
 
 def build_processing_kwargs():
-
     with st.sidebar.expander("Processing settings", expanded=False):
         with st.container(border=True):
             st.markdown("#### Baseline")
-    
+
             baseline_method = st.radio(
                 "Method",
                 ["arpls", "snip"],
                 format_func=lambda x: "arPLS" if x == "arpls" else "SNIP",
+                #help="Choose the baseline correction method applied before smoothing and peak detection.",
             )
-    
+
             if baseline_method == "arpls":
                 baseline_value = st.slider(
                     "arPLS lambda",
@@ -231,6 +233,7 @@ def build_processing_kwargs():
                     max_value=10000,
                     value=1000,
                     step=100,
+                    help="Smoothness parameter for arPLS baseline correction. Higher values usually produce a smoother baseline.",
                 )
                 baseline_params = {
                     "lam": float(baseline_value),
@@ -244,20 +247,21 @@ def build_processing_kwargs():
                     max_value=200,
                     value=60,
                     step=1,
+                    help="Number of iterations used by the SNIP baseline algorithm.",
                 )
                 baseline_params = {
                     "iterations": int(baseline_value),
                 }
 
-        #st.divider()
         with st.container(border=True):
             st.markdown("#### Smoothing")
             smoothing_method = st.radio(
                 "Method",
                 ["whittaker", "savgol"],
                 format_func=lambda x: "Whittaker" if x == "whittaker" else "Savitzky-Golay",
+                #help="Choose the smoothing method applied after baseline correction.",
             )
-    
+
             if smoothing_method == "whittaker":
                 smoothing_lambda = st.slider(
                     "Whittaker lambda",
@@ -265,6 +269,7 @@ def build_processing_kwargs():
                     max_value=50.0,
                     value=1.0,
                     step=0.1,
+                    help="Smoothness parameter for Whittaker smoothing. Higher values usually increase smoothing.",
                 )
                 smoothing_params = {"lam": float(smoothing_lambda), "d": 2}
             else:
@@ -274,6 +279,7 @@ def build_processing_kwargs():
                     max_value=51,
                     value=5,
                     step=2,
+                    help="Window length for Savitzky-Golay smoothing. Must be an odd number.",
                 )
                 savgol_polyorder = st.slider(
                     "Savitzky-Golay polyorder",
@@ -281,22 +287,22 @@ def build_processing_kwargs():
                     max_value=7,
                     value=3,
                     step=1,
+                    help="Polynomial order used for Savitzky-Golay smoothing.",
                 )
                 smoothing_params = {
                     "window_length": int(savgol_window),
                     "polyorder": int(savgol_polyorder),
                 }
 
-        #st.divider()
-        
         with st.container(border=True):
             st.markdown("#### Peaks")
             prominence_mode = st.radio(
                 "Prominence mode",
                 ["auto", "manual"],
                 horizontal=True,
+                #help="Use automatic peak prominence estimation or define a fixed manual prominence threshold.",
             )
-    
+
             if prominence_mode == "manual":
                 peak_prominence = st.slider(
                     "Prominence",
@@ -304,51 +310,41 @@ def build_processing_kwargs():
                     max_value=200.0,
                     value=10.0,
                     step=1.0,
+                    help="Minimum prominence required for a peak to be detected in manual mode.",
                 )
             else:
                 peak_prominence = None
-    
+
             peak_prominence_factor = st.slider(
                 "Auto prominence factor",
                 min_value=0.001,
                 max_value=0.2,
                 value=0.05,
                 step=0.001,
+                help="Scaling factor used to estimate peak prominence automatically from the processed spectrum.",
             )
-    
+
             peak_width = st.slider(
                 "Min width (cm⁻¹)",
                 min_value=0.0,
                 max_value=50.0,
                 value=2.0,
                 step=0.5,
+                help="Minimum peak width required for detected peaks.",
             )
-    
+
             peak_distance = st.slider(
                 "Min distance (cm⁻¹)",
                 min_value=0.0,
                 max_value=100.0,
                 value=8.0,
                 step=1.0,
+                help="Minimum distance between detected peaks.",
             )
-    
-        #st.divider()
-        
-#        with st.container(border=True):
-#            st.markdown("#### Range")
-#    
-#            xmin, xmax = st.slider(
-#                "X range",
-#                min_value=0,
-#                max_value=4000,
-#                value=(100, 3200),
-#                step=1,
-#            )
 
     return {
         "xmin": float(xmin),
         "xmax": float(xmax),
-        #"x_shift": float(spectrum_shift),
         "baseline_method": baseline_method,
         "baseline_params": baseline_params,
         "smoothing_method": smoothing_method,
@@ -417,6 +413,7 @@ def show_metadata(spectrum: dict):
         unsafe_allow_html=True,
     )
 
+
 @st.cache_data(show_spinner=False)
 def cached_process_spectrum(x_tuple, y_tuple, kwargs_json):
     kwargs = json.loads(kwargs_json)
@@ -432,10 +429,6 @@ def run_processed(x, y, kwargs):
 
 
 def _spectra_to_hashable(spectra_dict: dict) -> tuple:
-    """Konvertiert ein spectra-Dict vollständig in ein hashbares Format für st.cache_data.
-    Alle Felder werden hier eingebettet, damit die gecachten Funktionen
-    KEIN st.session_state mehr intern lesen müssen.
-    """
     def _val_to_hashable(v):
         if isinstance(v, list):
             return tuple(v)
@@ -456,10 +449,8 @@ def _spectra_to_hashable(spectra_dict: dict) -> tuple:
 
 
 def _hashable_to_spectra(spectra_hashable: tuple) -> dict:
-    """Rekonstruiert das spectra-Dict aus dem hashbaren Format."""
     def _val_from_hashable(v):
         if isinstance(v, tuple) and v and isinstance(v[0], tuple) and len(v[0]) == 2:
-            # Könnte ein dict sein – prüfen ob alle Elemente 2-Tuples sind
             try:
                 return {k: _val_from_hashable(w) for k, w in v}
             except (TypeError, ValueError):
@@ -494,6 +485,11 @@ uploaded_files = st.sidebar.file_uploader(
     "Upload Raman spectra",
     type=["txt", "xml", "l6s"],
     accept_multiple_files=True,
+    help=(
+        "Upload one or more Raman spectra in TXT, XML, or L6S format. "
+        "TXT files should contain two columns without header: wavenumber and intensity. "
+        "Files containing more than one spectrum are currently not supported."
+    ),
 )
 
 sync_uploaded_files(uploaded_files)
@@ -503,11 +499,14 @@ spectra = st.session_state.spectra
 if not spectra:
     st.info(
         """
-        Upload one or more spectra to begin. \n\n 
-        TXT: Plain text files w/o header - 2 col. - wn [space] I \n\n 
-        XML: HORIBA LabSpec XML files \n\n
-        L6S: HORIBA LabSpec L6S files \n\n
-        Files containing more than one spectrum are not supported.
+        Upload one or more spectra to begin.
+
+        **Supported formats**
+        - **TXT**: plain text, no header, two columns (`wavenumber intensity`)
+        - **XML**: HORIBA LabSpec XML
+        - **L6S**: HORIBA LabSpec L6S
+
+        Files containing more than one spectrum are currently not supported.
         """
     )
     st.stop()
@@ -518,76 +517,39 @@ with st.sidebar.expander("Spectrum selection", expanded=True):
     selected_spectrum_name = st.selectbox(
         "Active spectrum",
         options=spectrum_names,
+        help=(
+            "Select the spectrum used for the single view, manual spectrum adjustments, "
+            "metadata display, single-spectrum export, and single-spectrum upload."
+        ),
     )
 
     st.session_state.selected_spectrum_name = selected_spectrum_name
-    #st.markdown(f"**Active spectrum:** {selected_spectrum_name}")
-    
+
     selected_overlay_names = st.multiselect(
         "Overlay spectra",
         options=spectrum_names,
         default=spectrum_names,
+        help=(
+            "Select one or more spectra for overlay, normalized overlay, stacked view, "
+            "multi-spectrum export, and multi-spectrum upload."
+        ),
     )
-    
+
     st.session_state.selected_overlay_names = selected_overlay_names
-    
-    slider_key = f"intensity_scale_{selected_spectrum_name}"
 
-    if slider_key not in st.session_state:
-        st.session_state[slider_key] = float(
-            st.session_state.intensity_scales.get(selected_spectrum_name, 1.0)
-        )
-        
-    with st.container(border=True):    
-    
-        st.markdown(
-            f"""
-            <span style='font-size: 0.9rem; line-height: 1.5; font-weight: 500; 
-            color: red'>
-            ⚠️ Significant data manipulation possible!
-            </span>""", 
-            unsafe_allow_html=True,
-        )
-        
-        st.markdown(
-            f"""
-            <div style='font-size: 0.6rem; border-radius: 6px; color: red; 
-            font-weight: 500; 
-            background-color: None;'>{selected_spectrum_name}<br><br></div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        active_intensity_scale = st.slider(
-            f"Intensity scale (active spectrum):",
-            min_value=0.1,
-            max_value=20.0,
-            step=0.1,
-            key=slider_key,
-        )
-       
-        st.session_state.intensity_scales[selected_spectrum_name] = float(active_intensity_scale)    
-        
-        shift_key = f"x_shift_{selected_spectrum_name}"
-        
-        if shift_key not in st.session_state:
-            st.session_state[shift_key] = float(
-                st.session_state.x_shifts.get(selected_spectrum_name, 0.0)
-            )
-        
-        active_x_shift = st.slider(
-            f"Spectrum shift (active spectrum):",
-            min_value=-50.0,
-            max_value=50.0,
-            step=0.1,
-            key=shift_key,
-        )
-           
-        st.session_state.x_shifts[selected_spectrum_name] = float(active_x_shift)    
-    
 with st.sidebar.expander("Display options", expanded=False):
-    show_peaks = st.checkbox("Show peaks (single spectrum)", value=True, key="single_show_peaks")
-    show_multi_peaks = st.checkbox("Show peaks (overlay & stacked)", value=True, key="multi_show_peaks")
+    show_peaks = st.checkbox(
+        "Show peaks (single spectrum)",
+        value=True,
+        key="single_show_peaks",
+        #help="Display detected peak positions in the single-spectrum view.",
+    )
+    show_multi_peaks = st.checkbox(
+        "Show peaks (overlay & stacked)",
+        value=True,
+        key="multi_show_peaks",
+        # help="Display detected peak positions in overlay, normalized overlay, and stacked views.",
+    )
 
     xmin, xmax = st.slider(
         "wn range (cm⁻¹)",
@@ -596,28 +558,70 @@ with st.sidebar.expander("Display options", expanded=False):
         value=(100, 3200),
         step=1,
         key="wn_range",
+        help=(
+            "Restrict the processed spectral range used for visualization, baseline correction, "
+            "smoothing, and peak detection."
+        ),
     )
 
     st.slider(
         "Stack spacing",
         min_value=0.0,
         max_value=2.0,
-        #value=1.2,
         step=0.01,
         key="stack_step",
+        help="Vertical offset between normalized spectra in the stacked view.",
     )
 
 processing_kwargs = build_processing_kwargs()
 st.session_state.processing_kwargs = processing_kwargs
 
+with st.sidebar.expander("Manual spectrum adjustments", expanded=False):
+    st.warning("⚠️ Significant data manipulation is possible.")
+    st.caption(
+        "These adjustments are intended for visual comparison and manual alignment of spectra."
+    )
+
+    slider_key = f"intensity_scale_{selected_spectrum_name}"
+    if slider_key not in st.session_state:
+        st.session_state[slider_key] = float(
+            st.session_state.intensity_scales.get(selected_spectrum_name, 1.0)
+        )
+
+    active_intensity_scale = st.slider(
+        "Intensity scale (active spectrum):",
+        min_value=0.1,
+        max_value=20.0,
+        step=0.1,
+        key=slider_key,
+        help="Multiply the intensity of the active spectrum for visual comparison and relevant exports.",
+    )
+    st.session_state.intensity_scales[selected_spectrum_name] = float(active_intensity_scale)
+
+    shift_key = f"x_shift_{selected_spectrum_name}"
+    if shift_key not in st.session_state:
+        st.session_state[shift_key] = float(
+            st.session_state.x_shifts.get(selected_spectrum_name, 0.0)
+        )
+
+    active_x_shift = st.slider(
+        "Spectrum shift (active spectrum):",
+        min_value=-50.0,
+        max_value=50.0,
+        step=0.1,
+        key=shift_key,
+        help="Apply a horizontal shift in cm⁻¹ to the active spectrum for manual spectral alignment.",
+    )
+    st.session_state.x_shifts[selected_spectrum_name] = float(active_x_shift)
+
 active_spectrum = spectra.get(selected_spectrum_name)
 if active_spectrum is None:
     st.stop()
-   
+
 with st.sidebar.expander("Spectrum Info", expanded=False):
     show_metadata(active_spectrum)
 
-tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra", "Export","eLabFTW"])
+tabs = st.tabs(["Single View", "Overlay Spectra", "Normalized Overlay", "Stacked Spectra", "Export", "eLabFTW"])
 
 with tabs[0]:
     st.caption(
@@ -629,18 +633,18 @@ with tabs[0]:
             selected_spectrum_name,
             1.0,
         )
-        
+
         single_processing_kwargs["x_shift"] = st.session_state.x_shifts.get(
             selected_spectrum_name,
             0.0,
         )
-        
+
         result = run_processed(
             active_spectrum["x"],
             active_spectrum["y"],
             single_processing_kwargs,
         )
-        
+
         fig = create_single_view_figure(
             result,
             show_peaks=show_peaks,
@@ -649,10 +653,14 @@ with tabs[0]:
         st.plotly_chart(fig, width="stretch")
     except Exception as exc:
         st.error(f"Processing error: {exc}")
+        
+    st.caption(
+        "Click legend entries to show or hide individual spectra."
+    )
 
 with tabs[1]:
     st.caption(
-        "Display the selected processed spectra in a shared overlay for direct comparison."
+        "Display the selected processed spectra in a shared overlay for direct comparison of absolute intensities and peak positions."
     )
     try:
         selected_spectra = {
@@ -675,6 +683,10 @@ with tabs[1]:
             st.plotly_chart(fig, width="stretch")
     except Exception as exc:
         st.error(f"Overlay error: {exc}")
+    
+    st.caption(
+        "Click legend entries to show or hide individual spectra."
+    )    
 
 with tabs[2]:
     st.caption(
@@ -686,10 +698,14 @@ with tabs[2]:
         processing_kwargs=processing_kwargs,
         show_multi_peaks=show_multi_peaks,
     )
-
+    
+    st.caption(
+        "Click legend entries to show or hide individual spectra."
+    )
+    
 with tabs[3]:
     st.caption(
-        "Display the selected normalized spectra with adjustable vertical spacing (Display options)."
+        "Display the selected normalized spectra with adjustable vertical spacing for clearer comparison of overlapping features."
     )
     render_stacked_spectra_tab(
         spectra=spectra,
@@ -697,6 +713,10 @@ with tabs[3]:
         processing_kwargs=processing_kwargs,
         show_multi_peaks=show_multi_peaks,
     )
+
+    st.caption(
+        "Click legend entries to show or hide individual spectra."
+        )
 
 with tabs[4]:
     render_export_tab(
@@ -708,6 +728,6 @@ with tabs[4]:
         show_peaks=show_peaks,
         show_multi_peaks=show_multi_peaks,
     )
-        
+
 with tabs[5]:
     render_elabftw_single_upload_section()
