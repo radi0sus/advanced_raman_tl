@@ -509,6 +509,18 @@ if not spectra:
         Files containing more than one spectrum are currently not supported.
         """
     )
+    
+    st.divider()
+    
+    col_left, col_center, col_right = st.columns([1, 4, 1])
+    with col_center:
+        st.video(
+            "https://raw.githubusercontent.com/radi0sus/media/main/advanced_raman_tl/demo_c.mp4",
+            autoplay=False,
+            muted=True,
+            loop=True,
+        )
+    
     st.stop()
 
 with st.sidebar.expander("Spectrum selection", expanded=True):
