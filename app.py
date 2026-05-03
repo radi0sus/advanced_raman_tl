@@ -519,7 +519,7 @@ if not spectra:
             format="video/mp4",
             autoplay=False,
             muted=True,
-            loop=True,
+            loop=False,
         )
     
     st.stop()
